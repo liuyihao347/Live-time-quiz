@@ -20,12 +20,11 @@
 
 ## 🧠 Highlights
 
-- ⚡ **Instant Quiz** - Auto-generates quizzes after AI completes tasks
-- 🎨 **Sleek UI** - Modern interface integrated into your IDE
-- 🎯 **Adaptive Difficulty** - Smart difficulty adjustment matching your progress
-- 📊 **Instant Feedback** - Auto-grading with detailed explanations
-- 🚫 **Skip Anytime** - Decline quizzes without disrupting workflow
-- 🔗 **Easy Integration** - Works with Cursor, Kilo Code, Windsurf & more
+- **Instant Quiz** - Auto-generates quizzes after AI completes tasks
+- **Adaptive Difficulty** - Smart difficulty adjustment matching your progress
+- **Instant Feedback** - Auto-grading with detailed explanations
+- **Skip Anytime** - Decline quizzes without disrupting workflow
+- **Easy Integration** - Works with Cursor, Kilo Code, Windsurf & more
 
 ## 🔄 How It Works
 
@@ -36,9 +35,8 @@ Task Complete → AI Summarizes → Quiz Prompt → Generate Questions → Answe
 1. **Task Trigger** - AI extracts key knowledge points after finishing a task
 2. **Optional Quiz** - Asks if you want a quiz to reinforce memory
 3. **On-the-fly Generation** - Creates a moderately difficult multiple-choice question
-4. **Beautiful Display** - Renders quiz in an elegant IDE interface
-5. **Smart Evaluation** - Automatically checks your answer
-6. **Knowledge Reinforcement** - Provides detailed analysis and summary
+4. **Smart Evaluation** - Automatically checks your answer
+5. **Knowledge Reinforcement** - Provides detailed analysis and summary
 
 ## 🚀 Installation
 
