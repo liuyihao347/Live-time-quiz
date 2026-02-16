@@ -21,13 +21,13 @@
 ## 🧠 Highlights
 
 - ⚡ **Instant Quiz** - Auto-generates quizzes after AI completes tasks
-- 🔬 **Sleek UI** - Modern interface integrated into your IDE
-- �️ **Adaptive Difficulty** - Smart difficulty adjustment matching your progress
+- 🎨 **Sleek UI** - Modern interface integrated into your IDE
+- 🎯 **Adaptive Difficulty** - Smart difficulty adjustment matching your progress
 - 📊 **Instant Feedback** - Auto-grading with detailed explanations
-- � **Skip Anytime** - Decline quizzes without disrupting workflow
-- � **Easy Integration** - Works with Cursor, Kilo Code, Windsurf & more
+- 🚫 **Skip Anytime** - Decline quizzes without disrupting workflow
+- 🔗 **Easy Integration** - Works with Cursor, Kilo Code, Windsurf & more
 
-## � How It Works
+## 🔄 How It Works
 
 ```
 Task Complete → AI Summarizes → Quiz Prompt → Generate Questions → Answer → Get Feedback
@@ -92,6 +92,6 @@ Restart your IDE to activate the MCP service.
 ---
 
 <p align="center">
-  Crafted with 🧠 for effective learning
+  Crafted with ❤️ for effective learning
 </p>
 

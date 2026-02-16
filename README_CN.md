@@ -21,13 +21,13 @@
 ## 🧠 特性
 
 - ⚡ **即时测验** - AI完成任务后自动生成精选知识测验
-- 🔬 **美观界面** - 现代化UI设计，集成到IDE中
-- 🎚️ **适中难度** - 智能调整题目难度，符合学习曲线
+- 🎨 **美观界面** - 现代化UI设计，集成到IDE中
+- � **适中难度** - 智能调整题目难度，符合学习曲线
 - 📊 **即时反馈** - 自动判断对错，提供详细解析
-- 🚪 **随时跳过** - 用户可随时拒绝测验，不影响对话流程
-- 🔌 **轻松集成** - 支持Cursor、Kilo Code、Windsurf等AI IDE
+- � **随时跳过** - 用户可随时拒绝测验，不影响对话流程
+- � **轻松集成** - 支持Cursor、Kilo Code、Windsurf等AI IDE
 
-## 🔬 工作原理
+## � 工作原理
 
 ```
 用户任务完成 → AI总结精华 → 询问是否测验 → 生成选择题 → 用户作答 → 即时反馈
@@ -92,5 +92,5 @@ npm run build
 ---
 
 <p align="center">
-  Crafted with 🧠 for effective learning
+  Crafted with ❤️ for effective learning
 </p>
