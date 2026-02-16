@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "live-time-quiz": {
+      "command": "node",
+      "args": [
+        "C:/Users/ASUS/Desktop/Live-time-quiz/dist/index.js"
+      ],
+      "env": {
+        "NODE_ENV": "production"
+      },
+      "disabled": false,
+      "autoApprove": ["generate_quiz", "submit_answer", "skip_quiz", "get_quiz_feedback"]
+    }
+  }
+}

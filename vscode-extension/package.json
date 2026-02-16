@@ -1,0 +1,61 @@
+{
+  "name": "live-time-quiz",
+  "displayName": "Live-time Quiz",
+  "description": "让AI在任务完成后生成知识测验，帮助巩固记忆",
+  "version": "1.0.0",
+  "publisher": "live-time-quiz",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": ["Education", "Machine Learning", "Other"],
+  "keywords": ["quiz", "learning", "mcp", "ai", "memory"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "liveTimeQuiz.showQuiz",
+        "title": "Show Quiz",
+        "category": "Live-time Quiz"
+      },
+      {
+        "command": "liveTimeQuiz.enableQuiz",
+        "title": "Enable Auto Quiz",
+        "category": "Live-time Quiz"
+      },
+      {
+        "command": "liveTimeQuiz.disableQuiz",
+        "title": "Disable Auto Quiz",
+        "category": "Live-time Quiz"
+      }
+    ],
+    "configuration": {
+      "title": "Live-time Quiz",
+      "properties": {
+        "liveTimeQuiz.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic quiz generation after AI tasks"
+        },
+        "liveTimeQuiz.difficulty": {
+          "type": "string",
+          "enum": ["easy", "medium", "hard"],
+          "default": "medium",
+          "description": "Default quiz difficulty level"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.4",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^5.3.3"
+  }
+}

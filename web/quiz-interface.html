@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live-time Quiz - 知识测验</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .quiz-wrapper {
+            width: 100%;
+            max-width: 700px;
+        }
+
+        .quiz-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 24px;
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            backdrop-filter: blur(20px);
+        }
+
+        .quiz-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .quiz-icon {
+            font-size: 56px;
+            margin-bottom: 12px;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-10px); }
+            60% { transform: translateY(-5px); }
+        }
+
+        .quiz-title {
+            font-size: 28px;
+            font-weight: 800;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .quiz-subtitle {
+            font-size: 15px;
+            opacity: 0.9;
+            font-weight: 400;
+        }
+
+        .quiz-body {
+            padding: 35px;
+        }
+
+        .progress-section {
+            margin-bottom: 25px;
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .question-section {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 25px;
+            border-left: 6px solid #667eea;
+        }
+
+        .question-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: #667eea;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+
+        .question-text {
+            font-size: 19px;
+            font-weight: 600;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+
+        .options-section {
+            margin-bottom: 25px;
+        }
+
+        .option {
+            display: flex;
+            align-items: center;
+            padding: 20px 24px;
+            margin-bottom: 12px;
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .option:hover {
+            border-color: #667eea;
+            background: #f7fafc;
+            transform: translateX(8px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+        }
+
+        .option.selected {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: #667eea;
+            color: white;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .option.correct {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            border-color: #48bb78;
+            color: white;
+        }
+
+        .option.wrong {
+            background: linear-gradient(135deg, #fc8181 0%, #e53e3e 100%);
+            border-color: #fc8181;
+            color: white;
+        }
+
+        .option-letter {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 18px;
+            margin-right: 18px;
+            flex-shrink: 0;
+            transition: all 0.3s ease;
+        }
+
+        .option.selected .option-letter,
+        .option.correct .option-letter,
+        .option.wrong .option-letter {
+            background: white;
+            color: #667eea;
+        }
+
+        .option.correct .option-letter {
+            color: #48bb78;
+        }
+
+        .option.wrong .option-letter {
+            color: #e53e3e;
+        }
+
+        .option-text {
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 1.5;
+        }
+
+        .actions {
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 18px 28px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #edf2f7;
+            color: #4a5568;
+        }
+
+        .btn-secondary:hover {
+            background: #e2e8f0;
+            transform: translateY(-2px);
+        }
+
+        .result-panel {
+            display: none;
+            animation: slideUp 0.6s ease;
+        }
+
+        .result-panel.show {
+            display: block;
+        }
+
+        @keyframes slideUp {
+            from { 
+                opacity: 0; 
+                transform: translateY(30px); 
+            }
+            to { 
+                opacity: 1; 
+                transform: translateY(0); 
+            }
+        }
+
+        .result-hero {
+            text-align: center;
+            padding: 30px 0;
+        }
+
+        .result-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+            animation: scaleIn 0.5s ease;
+        }
+
+        @keyframes scaleIn {
+            from { transform: scale(0); }
+            to { transform: scale(1); }
+        }
+
+        .result-title {
+            font-size: 26px;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+
+        .result-correct {
+            color: #48bb78;
+        }
+
+        .result-wrong {
+            color: #e53e3e;
+        }
+
+        .result-message {
+            font-size: 16px;
+            color: #666;
+        }
+
+        .explanation-card {
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            border-radius: 16px;
+            padding: 28px;
+            margin: 25px 0;
+            border: 2px solid #e2e8f0;
+        }
+
+        .explanation-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+
+        .explanation-icon {
+            font-size: 24px;
+        }
+
+        .explanation-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .explanation-text {
+            font-size: 15px;
+            color: #4a5568;
+            line-height: 1.8;
+        }
+
+        .knowledge-summary {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+
+        .knowledge-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .knowledge-text {
+            font-size: 14px;
+            color: #4a5568;
+            line-height: 1.7;
+        }
+
+        .session-footer {
+            text-align: center;
+            padding: 20px;
+            background: #f7fafc;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .session-id {
+            font-size: 12px;
+            color: #a0aec0;
+            font-family: 'Courier New', monospace;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-pending {
+            background: #fef3c7;
+            color: #d97706;
+        }
+
+        .status-correct {
+            background: #d1fae5;
+            color: #059669;
+        }
+
+        .status-wrong {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+    </style>
+</head>
+<body>
+    <div class="quiz-wrapper">
+        <div class="quiz-card">
+            <div class="quiz-header">
+                <div class="quiz-icon">🎯</div>
+                <h1 class="quiz-title">Live-time Quiz</h1>
+                <p class="quiz-subtitle">巩固知识 · 提升记忆</p>
+            </div>
+
+            <div class="quiz-body">
+                <!-- 进度条 -->
+                <div class="progress-section">
+                    <div class="progress-label">
+                        <span>测验进度</span>
+                        <span id="progress-text">1 / 1</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill" style="width: 100%"></div>
+                    </div>
+                </div>
+
+                <!-- 问题面板 -->
+                <div id="question-panel">
+                    <div class="question-section">
+                        <div class="question-label">Question</div>
+                        <p class="question-text" id="question-text">
+                            基于刚才的学习内容，以下哪项是最重要的知识点？
+                        </p>
+                    </div>
+
+                    <div class="options-section" id="options-container">
+                        <!-- 选项将通过JS动态生成 -->
+                    </div>
+
+                    <div class="actions">
+                        <button class="btn btn-primary" id="submit-btn" disabled>提交答案</button>
+                        <button class="btn btn-secondary" id="skip-btn">跳过测验</button>
+                    </div>
+                </div>
+
+                <!-- 结果面板 -->
+                <div class="result-panel" id="result-panel">
+                    <div class="result-hero">
+                        <div class="result-icon" id="result-icon">🎉</div>
+                        <h2 class="result-title result-correct" id="result-title">回答正确！</h2>
+                        <p class="result-message" id="result-message">太棒了！你已经掌握了这个知识点</p>
+                    </div>
+
+                    <div class="explanation-card">
+                        <div class="explanation-header">
+                            <span class="explanation-icon">💡</span>
+                            <span class="explanation-title">知识解析</span>
+                        </div>
+                        <p class="explanation-text" id="explanation-text">
+                            理解核心概念是掌握知识的基础，细节和实践都应该建立在概念理解之上。
+                        </p>
+
+                        <div class="knowledge-summary">
+                            <div class="knowledge-title">知识点总结</div>
+                            <p class="knowledge-text" id="knowledge-text">
+                                掌握核心概念是最重要的学习基础
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="actions">
+                        <button class="btn btn-primary" id="continue-btn">继续学习</button>
+                        <button class="btn btn-secondary" id="new-quiz-btn">再来一题</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="session-footer">
+                <span class="session-id" id="session-id">Session: quiz_demo_001</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 示例测验数据
+        const quizData = {
+            id: 'quiz_demo_' + Date.now(),
+            question: '在JavaScript中，以下哪个方法可以正确地创建一个Promise对象？',
+            options: [
+                'new Promise((resolve, reject) => { ... })',
+                'Promise.create((resolve, reject) => { ... })',
+                'new PromiseObject((resolve, reject) => { ... })',
+                'createPromise((resolve, reject) => { ... })'
+            ],
+            correctIndex: 0,
+            explanation: 'Promise构造函数是创建Promise的标准方式。它接受一个执行器函数作为参数，该函数有两个参数：resolve和reject回调。Promise.create()、PromiseObject和createPromise都不是有效的JavaScript API。',
+            knowledgeSummary: 'Promise是JavaScript异步编程的核心，通过new Promise()构造函数创建，配合async/await可以优雅地处理异步操作。'
+        };
+
+        let selectedIndex = null;
+        let answered = false;
+
+        // 初始化选项
+        function initOptions() {
+            const container = document.getElementById('options-container');
+            const letters = ['A', 'B', 'C', 'D'];
+
+            quizData.options.forEach((option, index) => {
+                const optionDiv = document.createElement('div');
+                optionDiv.className = 'option';
+                optionDiv.dataset.index = index;
+                optionDiv.innerHTML = `
+                    <span class="option-letter">${letters[index]}</span>
+                    <span class="option-text">${option}</span>
+                `;
+
+                optionDiv.addEventListener('click', () => {
+                    if (answered) return;
+                    selectOption(index);
+                });
+
+                container.appendChild(optionDiv);
+            });
+
+            // 更新问题文本
+            document.getElementById('question-text').textContent = quizData.question;
+            document.getElementById('session-id').textContent = 'Session: ' + quizData.id;
+        }
+
+        function selectOption(index) {
+            selectedIndex = index;
+            
+            document.querySelectorAll('.option').forEach((opt, i) => {
+                opt.classList.toggle('selected', i === index);
+            });
+
+            document.getElementById('submit-btn').disabled = false;
+        }
+
+        function submitAnswer() {
+            if (selectedIndex === null || answered) return;
+
+            answered = true;
+            const isCorrect = selectedIndex === quizData.correctIndex;
+
+            // 标记选项
+            document.querySelectorAll('.option').forEach((opt, i) => {
+                opt.classList.remove('selected');
+                if (i === quizData.correctIndex) {
+                    opt.classList.add('correct');
+                } else if (i === selectedIndex && !isCorrect) {
+                    opt.classList.add('wrong');
+                }
+            });
+
+            // 显示结果面板
+            setTimeout(() => {
+                showResult(isCorrect);
+            }, 800);
+        }
+
+        function showResult(isCorrect) {
+            document.getElementById('question-panel').style.display = 'none';
+            const resultPanel = document.getElementById('result-panel');
+            resultPanel.classList.add('show');
+
+            const resultIcon = document.getElementById('result-icon');
+            const resultTitle = document.getElementById('result-title');
+            const resultMessage = document.getElementById('result-message');
+
+            if (isCorrect) {
+                resultIcon.textContent = '🎉';
+                resultTitle.textContent = '回答正确！';
+                resultTitle.className = 'result-title result-correct';
+                resultMessage.textContent = '太棒了！你已经掌握了这个知识点';
+            } else {
+                resultIcon.textContent = '💪';
+                resultTitle.textContent = '回答错误';
+                resultTitle.className = 'result-title result-wrong';
+                resultMessage.textContent = '别灰心！再看一下解析巩固一下吧';
+            }
+
+            document.getElementById('explanation-text').textContent = quizData.explanation;
+            document.getElementById('knowledge-text').textContent = quizData.knowledgeSummary;
+        }
+
+        function skipQuiz() {
+            if (confirm('确定要跳过这个测验吗？你可以随时重新开始。')) {
+                document.getElementById('question-panel').innerHTML = `
+                    <div style="text-align: center; padding: 40px;">
+                        <div style="font-size: 48px; margin-bottom: 20px;">👋</div>
+                        <h3 style="color: #666; margin-bottom: 10px;">测验已跳过</h3>
+                        <p style="color: #999;">如果你之后想要复习，随时可以重新开始！</p>
+                    </div>
+                `;
+            }
+        }
+
+        function continueLearning() {
+            alert('继续学习！这个测验已保存到你的学习记录中。');
+        }
+
+        function newQuiz() {
+            location.reload();
+        }
+
+        // 事件监听
+        document.getElementById('submit-btn').addEventListener('click', submitAnswer);
+        document.getElementById('skip-btn').addEventListener('click', skipQuiz);
+        document.getElementById('continue-btn').addEventListener('click', continueLearning);
+        document.getElementById('new-quiz-btn').addEventListener('click', newQuiz);
+
+        // 初始化
+        initOptions();
+
+        // API接口（供IDE扩展调用）
+        window.LiveTimeQuiz = {
+            loadQuiz: function(data) {
+                // 加载新的测验数据
+                Object.assign(quizData, data);
+                location.reload();
+            },
+            getResult: function() {
+                return {
+                    sessionId: quizData.id,
+                    answered: answered,
+                    selectedIndex: selectedIndex,
+                    isCorrect: selectedIndex === quizData.correctIndex
+                };
+            }
+        };
+    </script>
+</body>
+</html>
