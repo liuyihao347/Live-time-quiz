@@ -21,7 +21,6 @@
 ## 🧠 Highlights
 
 - **Instant Quiz** - Auto-generates quizzes after AI completes tasks
-- **Adaptive Difficulty** - Smart difficulty adjustment matching your progress
 - **Instant Feedback** - Auto-grading with detailed explanations
 - **Skip Anytime** - Decline quizzes without disrupting workflow
 - **Easy Integration** - Works with Cursor, Kilo Code, Windsurf & more
@@ -34,7 +33,7 @@ Task Complete → AI Summarizes → Quiz Prompt → Generate Questions → Answe
 
 1. **Task Trigger** - AI extracts key knowledge points after finishing a task
 2. **Optional Quiz** - Asks if you want a quiz to reinforce memory
-3. **On-the-fly Generation** - Creates a moderately difficult multiple-choice question
+3. **On-the-fly Generation** - Creates a multiple-choice question instantly
 4. **Smart Evaluation** - Automatically checks your answer
 5. **Knowledge Reinforcement** - Provides detailed analysis and summary
 
@@ -75,12 +74,13 @@ Restart your IDE to activate the MCP service.
 
 - **Auto-trigger**: AI asks for a quiz after completing tasks
 - **Manual trigger**: Type "give me a quiz" or "quiz" in chat
-- **Answer**: Submit by typing the option letter (A/B/C/D)
+- **Answer**:
+  - Chat mode: Submit by typing the option letter (A/B/C/D)
+  - **VS Code Extension**: Click option buttons to answer (recommended)
 
 ## 🏗️ Project Structure
 
 - `src/index.ts`: MCP service core
-- `web/quiz-interface.html`: Optional web preview interface
 - `vscode-extension/`: VS Code helper extension
 
 ## 📄 License

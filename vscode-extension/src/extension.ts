@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 interface QuizData {
     id: string;
@@ -9,46 +11,75 @@ interface QuizData {
     knowledgeSummary: string;
 }
 
-interface QuizSession {
-    quiz: QuizData;
-    answered: boolean;
-    selectedIndex?: number;
-    isCorrect?: boolean;
-}
+let mcpClient: Client | null = null;
+let currentPanel: vscode.WebviewPanel | null = null;
+let currentQuizData: QuizData | null = null;
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     console.log('Live-time Quiz extension is now active!');
 
-    // 注册命令
-    let showQuizCommand = vscode.commands.registerCommand('liveTimeQuiz.showQuiz', () => {
-        const panel = createQuizPanel(context);
-        panel.webview.html = getQuizWebviewContent(context);
+    await initMCPClient();
+
+    let showQuizCommand = vscode.commands.registerCommand('liveTimeQuiz.showQuiz', async () => {
+        if (!currentQuizData) {
+            vscode.window.showInformationMessage('暂无测验题目，请先让AI生成测验');
+            return;
+        }
+        showQuizPanel(context, currentQuizData);
     });
 
     let enableQuizCommand = vscode.commands.registerCommand('liveTimeQuiz.enableQuiz', () => {
         vscode.workspace.getConfiguration().update('liveTimeQuiz.enabled', true, true);
-        vscode.window.showInformationMessage('✅ Live-time Quiz 已启用');
+        vscode.window.showInformationMessage(' Live-time Quiz ');
     });
 
     let disableQuizCommand = vscode.commands.registerCommand('liveTimeQuiz.disableQuiz', () => {
         vscode.workspace.getConfiguration().update('liveTimeQuiz.enabled', false, true);
-        vscode.window.showInformationMessage('🚫 Live-time Quiz 已禁用');
+        vscode.window.showInformationMessage(' Live-time Quiz ');
     });
 
-    context.subscriptions.push(showQuizCommand, enableQuizCommand, disableQuizCommand);
-
-    // 监听配置变化
-    vscode.workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration('liveTimeQuiz')) {
-            console.log('Live-time Quiz configuration changed');
-        }
+    let receiveQuizCommand = vscode.commands.registerCommand('liveTimeQuiz.receiveQuizData', (quizData: QuizData) => {
+        currentQuizData = quizData;
+        showQuizPanel(context, quizData);
     });
+
+    context.subscriptions.push(showQuizCommand, enableQuizCommand, disableQuizCommand, receiveQuizCommand);
 }
 
-function createQuizPanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
+async function initMCPClient() {
+    try {
+        const transport = new StdioClientTransport({
+            command: "node",
+            args: ["dist/index.js"],
+        });
+
+        mcpClient = new Client({ name: "vscode-quiz-extension", version: "1.0.0" });
+        await mcpClient.connect(transport);
+        console.log("MCP Client connected");
+    } catch (error) {
+        console.error("Failed to connect to MCP server:", error);
+    }
+}
+
+export function deactivate() {
+    if (mcpClient) {
+        mcpClient.close();
+    }
+}
+
+function showQuizPanel(context: vscode.ExtensionContext, quizData: QuizData) {
+    if (currentPanel) {
+        currentPanel.reveal(vscode.ViewColumn.Beside);
+        currentPanel.webview.html = getQuizWebviewContent(quizData);
+    } else {
+        currentPanel = createQuizPanel(context, quizData);
+    }
+}
+
+function createQuizPanel(context: vscode.ExtensionContext, quizData: QuizData): vscode.WebviewPanel {
     const panel = vscode.window.createWebviewPanel(
         'liveTimeQuiz',
-        '🎯 Live-time Quiz',
+        '🎯 知识测验',
         vscode.ViewColumn.Beside,
         {
             enableScripts: true,
@@ -57,18 +88,20 @@ function createQuizPanel(context: vscode.ExtensionContext): vscode.WebviewPanel 
         }
     );
 
-    // 处理来自webview的消息
+    panel.webview.html = getQuizWebviewContent(quizData);
+
+    panel.onDidDispose(() => {
+        currentPanel = null;
+    }, null, context.subscriptions);
+
     panel.webview.onDidReceiveMessage(
-        message => {
+        async (message: { command: string; sessionId: string; selectedIndex: number }) => {
             switch (message.command) {
                 case 'submitAnswer':
-                    handleAnswerSubmit(message.sessionId, message.selectedIndex);
+                    await handleAnswerSubmit(message.sessionId, message.selectedIndex);
                     return;
                 case 'skipQuiz':
                     handleSkipQuiz(message.sessionId);
-                    return;
-                case 'showFeedback':
-                    showDetailedFeedback(message.sessionId);
                     return;
             }
         },
@@ -79,47 +112,72 @@ function createQuizPanel(context: vscode.ExtensionContext): vscode.WebviewPanel 
     return panel;
 }
 
-function handleAnswerSubmit(sessionId: string, selectedIndex: number) {
-    // 这里可以与MCP服务器通信验证答案
-    console.log(`Answer submitted for session ${sessionId}: ${selectedIndex}`);
-    
-    // 向用户展示反馈
-    const isCorrect = true; // 这里应该从MCP服务器获取结果
-    const message = isCorrect ? '✅ 回答正确！' : '❌ 回答错误，再看一下解析吧';
-    
-    vscode.window.showInformationMessage(message, '查看详细解析', '继续学习')
-        .then(selection => {
-            if (selection === '查看详细解析') {
-                showDetailedFeedback(sessionId);
-            }
+async function handleAnswerSubmit(sessionId: string, selectedIndex: number) {
+    if (!mcpClient) {
+        vscode.window.showErrorMessage('MCP 服务器未连接');
+        return;
+    }
+
+    try {
+        const result = await mcpClient.callTool({
+            name: "submit_answer",
+            arguments: { sessionId, selectedIndex }
         });
+
+        const feedback = (result.content as Array<{ text?: string }>)?.[0]?.text || '';
+        const isCorrect = feedback.includes('✅') || feedback.includes('正确');
+
+        if (currentPanel) {
+            currentPanel.webview.postMessage({
+                command: 'showResult',
+                isCorrect,
+                feedback
+            });
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`提交答案失败: ${error}`);
+    }
 }
 
 function handleSkipQuiz(sessionId: string) {
-    vscode.window.showInformationMessage('测验已跳过，随时可以重新开始！');
+    if (!mcpClient) return;
+    
+    mcpClient.callTool({
+        name: "skip_quiz",
+        arguments: { sessionId }
+    }).catch(console.error);
+
+    vscode.window.showInformationMessage('测验已跳过');
+    currentPanel?.dispose();
 }
 
-function showDetailedFeedback(sessionId: string) {
-    // 显示详细反馈面板
-    console.log(`Showing detailed feedback for session ${sessionId}`);
+function escapeHtml(text: string): string {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
-function getQuizWebviewContent(context: vscode.ExtensionContext): string {
+function getQuizWebviewContent(quizData: QuizData): string {
+    const optionsHtml = quizData.options.map((opt, i) => `
+        <div class="option" data-index="${i}" onclick="selectOption(${i})">
+            <span class="letter">${String.fromCharCode(65 + i)}</span>
+            <span class="text">${escapeHtml(opt)}</span>
+        </div>
+    `).join('');
+
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live-time Quiz</title>
+    <title>知识测验</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
@@ -127,416 +185,183 @@ function getQuizWebviewContent(context: vscode.ExtensionContext): string {
             align-items: center;
             padding: 20px;
         }
-
-        .quiz-container {
-            background: rgba(255, 255, 255, 0.95);
+        .card {
+            background: rgba(255, 255, 255, 0.98);
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 600px;
+            max-width: 650px;
             width: 100%;
-            padding: 40px;
-            backdrop-filter: blur(10px);
+            padding: 32px;
         }
-
-        .quiz-header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .quiz-icon {
-            font-size: 48px;
-            margin-bottom: 10px;
-        }
-
-        .quiz-title {
-            font-size: 24px;
-            font-weight: 700;
-            color: #333;
-            margin-bottom: 8px;
-        }
-
-        .quiz-subtitle {
-            font-size: 14px;
-            color: #666;
-        }
-
-        .question-box {
-            background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
-            border-radius: 15px;
-            padding: 25px;
-            margin-bottom: 25px;
+        .header { text-align: center; margin-bottom: 22px; }
+        .icon { font-size: 44px; margin-bottom: 8px; }
+        .title { font-size: 22px; font-weight: 800; color: #2d3748; }
+        .question {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 18px;
             border-left: 5px solid #667eea;
         }
-
-        .question-text {
-            font-size: 18px;
-            font-weight: 600;
-            color: #333;
-            line-height: 1.6;
-        }
-
-        .options-container {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-bottom: 25px;
-        }
-
+        .question-text { font-size: 16px; font-weight: 650; color: #2d3748; line-height: 1.6; }
         .option {
             display: flex;
             align-items: center;
-            padding: 18px 20px;
-            background: #f8f9fa;
-            border: 2px solid #e9ecef;
+            padding: 16px 18px;
+            margin-bottom: 10px;
+            background: white;
+            border: 2px solid #e2e8f0;
             border-radius: 12px;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.2s ease;
         }
-
-        .option:hover {
-            background: #e9ecef;
+        .option:hover:not(.disabled) {
             border-color: #667eea;
-            transform: translateX(5px);
+            transform: translateX(6px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
         }
-
-        .option.selected {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-color: #667eea;
-            color: white;
+        .option.disabled { cursor: not-allowed; opacity: 0.7; }
+        .option.correct { 
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); 
+            border-color: #48bb78; 
+            color: white; 
         }
-
-        .option-letter {
+        .option.wrong { 
+            background: linear-gradient(135deg, #fc8181 0%, #e53e3e 100%); 
+            border-color: #fc8181; 
+            color: white; 
+        }
+        .letter {
             width: 36px;
             height: 36px;
             border-radius: 50%;
-            background: #667eea;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 700;
-            margin-right: 15px;
+            font-weight: 800;
+            margin-right: 14px;
             flex-shrink: 0;
         }
-
-        .option.selected .option-letter {
-            background: white;
-            color: #667eea;
+        .option.correct .letter, .option.wrong .letter { background: white; }
+        .option.correct .letter { color: #48bb78; }
+        .option.wrong .letter { color: #e53e3e; }
+        .text { font-size: 14px; font-weight: 550; line-height: 1.5; }
+        .result { 
+            display: none; 
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 12px;
+            animation: fadeIn 0.3s ease;
         }
-
-        .option-text {
-            font-size: 15px;
-            font-weight: 500;
+        .result.show { display: block; }
+        .result.correct { background: #f0fff4; border: 2px solid #48bb78; }
+        .result.wrong { background: #fff5f5; border: 2px solid #fc8181; }
+        @keyframes fadeIn { 
+            from { opacity: 0; transform: translateY(10px); } 
+            to { opacity: 1; transform: translateY(0); } 
         }
-
+        .result-title { 
+            font-size: 18px; 
+            font-weight: 800; 
+            text-align: center; 
+            margin-bottom: 12px; 
+        }
+        .result-title.correct { color: #38a169; }
+        .result-title.wrong { color: #e53e3e; }
+        .explain {
+            color: #4a5568;
+            font-size: 14px;
+            line-height: 1.7;
+        }
         .actions {
             display: flex;
-            gap: 12px;
+            gap: 10px;
+            margin-top: 16px;
         }
-
         .btn {
             flex: 1;
-            padding: 15px 25px;
+            padding: 12px;
             border: none;
             border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
         }
-
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-        }
-
+        .btn-primary:hover { opacity: 0.9; transform: translateY(-2px); }
         .btn-secondary {
-            background: #f8f9fa;
-            color: #666;
-            border: 2px solid #e9ecef;
+            background: #e2e8f0;
+            color: #4a5568;
         }
-
-        .btn-secondary:hover {
-            background: #e9ecef;
-        }
-
-        .result-panel {
-            display: none;
-            animation: fadeIn 0.5s ease;
-        }
-
-        .result-panel.show {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .result-icon {
-            font-size: 64px;
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .result-title {
-            font-size: 22px;
-            font-weight: 700;
-            text-align: center;
-            margin-bottom: 15px;
-        }
-
-        .result-correct {
-            color: #28a745;
-        }
-
-        .result-wrong {
-            color: #dc3545;
-        }
-
-        .explanation-box {
-            background: #f8f9fa;
-            border-radius: 12px;
-            padding: 20px;
-            margin-top: 20px;
-        }
-
-        .explanation-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .explanation-text {
-            font-size: 14px;
-            color: #666;
-            line-height: 1.7;
-        }
-
-        .session-info {
-            font-size: 12px;
-            color: #999;
-            text-align: center;
-            margin-top: 20px;
-        }
-
-        .progress-bar {
-            width: 100%;
-            height: 6px;
-            background: #e9ecef;
-            border-radius: 3px;
-            overflow: hidden;
-            margin-bottom: 25px;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 3px;
-            transition: width 0.3s ease;
-        }
+        .btn-secondary:hover { background: #cbd5e0; }
     </style>
 </head>
 <body>
-    <div class="quiz-container">
-        <div class="quiz-header">
-            <div class="quiz-icon">🎯</div>
-            <h1 class="quiz-title">知识测验</h1>
-            <p class="quiz-subtitle">巩固你的学习成果</p>
+    <div class="card">
+        <div class="header">
+            <div class="icon">🎯</div>
+            <div class="title">知识测验</div>
         </div>
-
-        <div class="progress-bar">
-            <div class="progress-fill" style="width: 50%"></div>
+        <div class="question">
+            <div class="question-text">${escapeHtml(quizData.question)}</div>
         </div>
-
-        <div id="quiz-panel">
-            <div class="question-box">
-                <p class="question-text" id="question-text">
-                    基于刚才的学习内容，以下哪项是最重要的知识点？
-                </p>
-            </div>
-
-            <div class="options-container" id="options-container">
-                <div class="option" data-index="0">
-                    <span class="option-letter">A</span>
-                    <span class="option-text">需要仔细理解核心概念</span>
-                </div>
-                <div class="option" data-index="1">
-                    <span class="option-letter">B</span>
-                    <span class="option-text">应该关注实现细节</span>
-                </div>
-                <div class="option" data-index="2">
-                    <span class="option-letter">C</span>
-                    <span class="option-text">要注意常见错误</span>
-                </div>
-                <div class="option" data-index="3">
-                    <span class="option-letter">D</span>
-                    <span class="option-text">重点是实践应用</span>
-                </div>
-            </div>
-
+        <div id="options">${optionsHtml}</div>
+        <div id="result" class="result">
+            <div id="result-title" class="result-title"></div>
+            <div class="explain" id="explain"></div>
             <div class="actions">
-                <button class="btn btn-primary" id="submit-btn">提交答案</button>
-                <button class="btn btn-secondary" id="skip-btn">跳过测验</button>
+                <button class="btn btn-secondary" onclick="skipQuiz()">跳过</button>
             </div>
-        </div>
-
-        <div class="result-panel" id="result-panel">
-            <div class="result-icon" id="result-icon">✅</div>
-            <h2 class="result-title result-correct" id="result-title">回答正确！</h2>
-            
-            <div class="explanation-box">
-                <div class="explanation-title">
-                    <span>💡</span>
-                    <span>知识解析</span>
-                </div>
-                <p class="explanation-text" id="explanation-text">
-                    理解核心概念是掌握知识的基础，细节和实践都应该建立在概念理解之上。通过理解核心概念，你可以更好地应用知识解决实际问题。
-                </p>
-            </div>
-
-            <div class="actions" style="margin-top: 25px;">
-                <button class="btn btn-primary" id="next-btn">继续学习</button>
-                <button class="btn btn-secondary" id="review-btn">查看详情</button>
-            </div>
-        </div>
-
-        <div class="session-info" id="session-info">
-            Session ID: quiz_placeholder
         </div>
     </div>
-
     <script>
         const vscode = acquireVsCodeApi();
-        let selectedIndex = null;
-        let sessionId = 'quiz_' + Date.now();
+        const quizData = ${JSON.stringify(quizData)};
+        let answered = false;
 
-        // 更新session id显示
-        document.getElementById('session-info').textContent = 'Session ID: ' + sessionId;
-
-        // 选项点击事件
-        document.querySelectorAll('.option').forEach(option => {
-            option.addEventListener('click', () => {
-                document.querySelectorAll('.option').forEach(o => o.classList.remove('selected'));
-                option.classList.add('selected');
-                selectedIndex = parseInt(option.dataset.index);
-            });
-        });
-
-        // 提交按钮
-        document.getElementById('submit-btn').addEventListener('click', () => {
-            if (selectedIndex === null) {
-                alert('请先选择一个选项！');
-                return;
-            }
+        function selectOption(index) {
+            if (answered) return;
+            answered = true;
 
             vscode.postMessage({
                 command: 'submitAnswer',
-                sessionId: sessionId,
-                selectedIndex: selectedIndex
+                sessionId: quizData.id,
+                selectedIndex: index
             });
 
-            // 显示结果面板（实际应该从MCP服务器获取结果）
-            showResult(selectedIndex === 0);
-        });
-
-        // 跳过按钮
-        document.getElementById('skip-btn').addEventListener('click', () => {
-            vscode.postMessage({
-                command: 'skipQuiz',
-                sessionId: sessionId
+            const options = document.querySelectorAll('.option');
+            options.forEach((el, i) => {
+                el.classList.add('disabled');
+                el.style.pointerEvents = 'none';
+                if (i === quizData.correctIndex) el.classList.add('correct');
+                else if (i === index && index !== quizData.correctIndex) el.classList.add('wrong');
             });
-        });
-
-        // 继续按钮
-        document.getElementById('next-btn').addEventListener('click', () => {
-            vscode.postMessage({
-                command: 'showFeedback',
-                sessionId: sessionId
-            });
-        });
-
-        // 查看详情按钮
-        document.getElementById('review-btn').addEventListener('click', () => {
-            vscode.postMessage({
-                command: 'showFeedback',
-                sessionId: sessionId
-            });
-        });
-
-        function showResult(isCorrect) {
-            document.getElementById('quiz-panel').style.display = 'none';
-            const resultPanel = document.getElementById('result-panel');
-            resultPanel.classList.add('show');
-
-            const resultIcon = document.getElementById('result-icon');
-            const resultTitle = document.getElementById('result-title');
-
-            if (isCorrect) {
-                resultIcon.textContent = '🎉';
-                resultTitle.textContent = '回答正确！';
-                resultTitle.className = 'result-title result-correct';
-            } else {
-                resultIcon.textContent = '💪';
-                resultTitle.textContent = '回答错误，别灰心！';
-                resultTitle.className = 'result-title result-wrong';
-            }
         }
 
-        // 接收来自扩展的消息
+        function skipQuiz() {
+            vscode.postMessage({ command: 'skipQuiz', sessionId: quizData.id });
+        }
+
         window.addEventListener('message', event => {
-            const message = event.data;
-            switch (message.command) {
-                case 'updateQuiz':
-                    updateQuizContent(message.quizData);
-                    break;
+            const msg = event.data;
+            if (msg.command === 'showResult') {
+                const resultDiv = document.getElementById('result');
+                const titleDiv = document.getElementById('result-title');
+                const explainDiv = document.getElementById('explain');
+                resultDiv.classList.add('show');
+                resultDiv.classList.add(msg.isCorrect ? 'correct' : 'wrong');
+                titleDiv.classList.add(msg.isCorrect ? 'correct' : 'wrong');
+                titleDiv.textContent = msg.isCorrect ? '✅ 回答正确！' : '❌ 回答错误';
+                explainDiv.textContent = quizData.explanation;
             }
         });
-
-        function updateQuizContent(quizData) {
-            document.getElementById('question-text').textContent = quizData.question;
-            const optionsContainer = document.getElementById('options-container');
-            optionsContainer.innerHTML = '';
-            
-            const letters = ['A', 'B', 'C', 'D'];
-            quizData.options.forEach((option, index) => {
-                const optionDiv = document.createElement('div');
-                optionDiv.className = 'option';
-                optionDiv.dataset.index = index;
-                optionDiv.innerHTML = 
-                    '<span class="option-letter">' + letters[index] + '</span>' +
-                    '<span class="option-text">' + option + '</span>';
-                optionDiv.addEventListener('click', () => {
-                    document.querySelectorAll('.option').forEach(o => o.classList.remove('selected'));
-                    optionDiv.classList.add('selected');
-                    selectedIndex = index;
-                });
-                optionsContainer.appendChild(optionDiv);
-            });
-
-            sessionId = quizData.id;
-            document.getElementById('session-info').textContent = 'Session ID: ' + sessionId;
-            
-            // 重置界面
-            document.getElementById('quiz-panel').style.display = 'block';
-            document.getElementById('result-panel').classList.remove('show');
-            selectedIndex = null;
-        }
     </script>
 </body>
 </html>`;
-}
-
-export function deactivate() {
-    console.log('Live-time Quiz extension is now deactivated!');
 }

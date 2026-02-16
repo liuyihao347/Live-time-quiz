@@ -54,7 +54,7 @@ class QuizMCPServer {
         tools: [
           {
             name: "generate_quiz",
-            description: "基于学习内容生成一道选择题测验。Agent应根据上下文自行生成题目、选项和解析，无需用户指定难度。",
+            description: "基于学习内容生成一道选择题测验。Agent应根据上下文自行生成题目、选项和解析。",
             inputSchema: {
               type: "object",
               properties: {
@@ -198,12 +198,14 @@ class QuizMCPServer {
 
   private formatQuizDisplay(quiz: QuizData, sessionId: string): string {
     const letters = ['A', 'B', 'C', 'D'];
-    let display = `🎯 **知识测验**\n\n`;
+    let display = `## 🎯 知识测验\n\n`;
     display += `**${quiz.question}**\n\n`;
+    display += `| 选项 | 内容 |\n`;
+    display += `|:---:|:---|\n`;
     quiz.options.forEach((option, i) => {
-      display += `**${letters[i]}.** ${option}\n`;
+      display += `| **${letters[i]}** | ${option} |\n`;
     });
-    display += `\n请选择你的答案（A / B / C / D）\nSession: \`${sessionId}\``;
+    display += `\n> 💡 回复选项字母 **A / B / C / D** 即可作答\n`;
     return display;
   }
 
@@ -232,9 +234,9 @@ class QuizMCPServer {
       feedback += `❌ **回答错误**\n\n`;
       feedback += `你的选择：**${selectedLetter}** · 正确答案：**${correctLetter}**\n\n`;
     }
-    feedback += `� **解析：** ${session.quiz.explanation}`;
+    feedback += `💡 **解析：** ${session.quiz.explanation}`;
     if (!session.isCorrect && session.quiz.knowledgeSummary) {
-      feedback += `\n\n� **知识点总结：** ${session.quiz.knowledgeSummary}`;
+      feedback += `\n\n📚 **知识点总结：** ${session.quiz.knowledgeSummary}`;
     }
 
     return {
@@ -276,7 +278,7 @@ class QuizMCPServer {
     }
 
     return {
-      content: [{ type: "text", text: "� 测验已跳过，随时可以重新开始！" }],
+      content: [{ type: "text", text: "👋 测验已跳过，随时可以重新开始！" }],
     };
   }
 

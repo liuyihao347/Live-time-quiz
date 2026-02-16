@@ -38,12 +38,6 @@
           "type": "boolean",
           "default": true,
           "description": "Enable automatic quiz generation after AI tasks"
-        },
-        "liveTimeQuiz.difficulty": {
-          "type": "string",
-          "enum": ["easy", "medium", "hard"],
-          "default": "medium",
-          "description": "Default quiz difficulty level"
         }
       }
     }
@@ -52,6 +46,9 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.4",
