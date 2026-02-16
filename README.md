@@ -1,58 +1,62 @@
-# 🎯 Live-time Quiz MCP
+<p align="center">
+  <img src="https://img.shields.io/badge/MCP-Compatible-6366f1?style=flat-square" alt="MCP Compatible">
+  <img src="https://img.shields.io/badge/Cursor-Supported-10b981?style=flat-square" alt="Cursor Supported">
+  <img src="https://img.shields.io/badge/Kilo_Code-Supported-10b981?style=flat-square" alt="Kilo Code Supported">
+  <img src="https://img.shields.io/badge/Windsurf-Supported-10b981?style=flat-square" alt="Windsurf Supported">
+  <img src="https://img.shields.io/badge/License-MIT-f59e0b?style=flat-square" alt="MIT License">
+</p>
+
+<h1 align="center">⚡ Live-time Quiz MCP</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/MCP-Compatible-blue?style=flat-square" alt="MCP Compatible">
-  <img src="https://img.shields.io/badge/Cursor-Supported-green?style=flat-square" alt="Cursor Supported">
-  <img src="https://img.shields.io/badge/Kilo_Code-Supported-green?style=flat-square" alt="Kilo Code Supported">
-  <img src="https://img.shields.io/badge/Windsurf-Supported-green?style=flat-square" alt="Windsurf Supported">
-  <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="MIT License">
+  <a href="README.md">English</a> | <a href="README_CN.md">简体中文</a>
 </p>
 
 <p align="center">
-  <strong>让AI在完成任务后生成知识测验，帮你巩固记忆、提升学习效果</strong>
+  <strong>AI generates knowledge quizzes after task completion to reinforce learning and boost retention</strong>
 </p>
 
 ---
 
-## ✨ 特性
+## 🧠 Highlights
 
-- 🎮 **即时测验** - AI完成任务后自动生成精选知识测验
-- 🎨 **美观界面** - 现代化UI设计，集成到IDE中
-- 🎯 **适中难度** - 智能调整题目难度，符合学习曲线
-- ✅ **即时反馈** - 自动判断对错，提供详细解析
-- 🚫 **随时跳过** - 用户可随时拒绝测验，不影响对话流程
-- 🔧 **轻松集成** - 支持Cursor、Kilo Code、Windsurf等AI IDE
+- ⚡ **Instant Quiz** - Auto-generates quizzes after AI completes tasks
+- 🔬 **Sleek UI** - Modern interface integrated into your IDE
+- �️ **Adaptive Difficulty** - Smart difficulty adjustment matching your progress
+- 📊 **Instant Feedback** - Auto-grading with detailed explanations
+- � **Skip Anytime** - Decline quizzes without disrupting workflow
+- � **Easy Integration** - Works with Cursor, Kilo Code, Windsurf & more
 
-## 📋 工作原理
+## � How It Works
 
 ```
-用户任务完成 → AI总结精华 → 询问是否测验 → 生成选择题 → 用户作答 → 即时反馈
+Task Complete → AI Summarizes → Quiz Prompt → Generate Questions → Answer → Get Feedback
 ```
 
-1. **任务结束触发** - 当AI完成一项任务后，总结最精华的知识点
-2. **可选测验** - 询问用户是否需要一道测验来巩固记忆
-3. **即时生成** - 如果用户同意，立即生成一道适中难度的选择题
-4. **美观展示** - 在IDE中以美观的界面展示测验
-5. **智能判断** - 用户作答后自动判断对错
-6. **知识巩固** - 提供详细解析和知识总结
+1. **Task Trigger** - AI extracts key knowledge points after finishing a task
+2. **Optional Quiz** - Asks if you want a quiz to reinforce memory
+3. **On-the-fly Generation** - Creates a moderately difficult multiple-choice question
+4. **Beautiful Display** - Renders quiz in an elegant IDE interface
+5. **Smart Evaluation** - Automatically checks your answer
+6. **Knowledge Reinforcement** - Provides detailed analysis and summary
 
-## 🚀 部署安装
+## 🚀 Installation
 
-### 1. 构建服务
+### 1. Build
 ```bash
 npm install
 npm run build
 ```
 
-### 2. 配置 IDE
-在对应 IDE 的配置文件中添加如下内容，注意替换 `[PATH_TO_PROJECT]` 为本项目实际绝对路径：
+### 2. Configure IDE
+Add to your IDE's MCP config, replacing `[PATH_TO_PROJECT]` with the actual path:
 
-**配置文件路径：**
+**Config locations:**
 - **Cursor**: `.cursor/mcp.json`
 - **Windsurf**: `.windsurf/mcp.json`
 - **VS Code / Kilo Code**: `.vscode/mcp.json`
 
-**配置内容：**
+**Configuration:**
 ```json
 {
   "mcpServers": {
@@ -66,24 +70,28 @@ npm run build
 }
 ```
 
-### 3. 重启 IDE
-配置完成后重启 IDE 即可激活 MCP 服务。
+### 3. Restart IDE
+Restart your IDE to activate the MCP service.
 
-## 📖 使用指南
-- **自动触发**：AI 完成任务后会询问是否需要测验。
-- **手动触发**：直接在对话中输入 "给我出个测验" 或 "quiz"。
-- **回答方式**：输入选项字母（A/B/C/D）提交。
+## 📖 Usage
 
-## 🛠️ 项目结构
-- `src/index.ts`: MCP 服务核心。
-- `web/quiz-interface.html`: 可选的 Web 预览界面。
-- `vscode-extension/`: VS Code 辅助扩展。
+- **Auto-trigger**: AI asks for a quiz after completing tasks
+- **Manual trigger**: Type "give me a quiz" or "quiz" in chat
+- **Answer**: Submit by typing the option letter (A/B/C/D)
 
-## 📄 许可证
+## 🏗️ Project Structure
+
+- `src/index.ts`: MCP service core
+- `web/quiz-interface.html`: Optional web preview interface
+- `vscode-extension/`: VS Code helper extension
+
+## 📄 License
+
 [MIT](LICENSE)
 
 ---
 
 <p align="center">
-  Made with ❤️ for better learning
+  Crafted with 🧠 for effective learning
 </p>
+
