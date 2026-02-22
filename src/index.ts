@@ -29,6 +29,166 @@ interface QuizBookConfig {
   autoQuizEnabled: boolean;
 }
 
+function sanitizeFilename(name: string): string {
+  return name.replace(/[<>:"/\\|?*]/g, "").trim().substring(0, 40);
+}
+
+function generateQuizFilename(quiz: QuizData): string {
+  const category = quiz.category || "未分类";
+  const questionPreview = sanitizeFilename(quiz.question.split(/[，。？！,.?!]/)[0]);
+  const shortDate = new Date(quiz.createdAt).toISOString().slice(0, 10).replace(/-/g, "");
+  return `${shortDate}_${category}_${questionPreview}.py`;
+}
+
+function generateStandaloneQuizPy(quiz: QuizData): string {
+  const quizJson = JSON.stringify(quiz, null, 2);
+  
+  return `# -*- coding: utf-8 -*-
+"""
+Quiz: ${quiz.question.split(/[，。？！,.?!]/)[0]}
+Category: ${quiz.category || "未分类"}
+Created: ${new Date(quiz.createdAt).toLocaleString("zh-CN")}
+
+这是一个自包含的测验文件，双击即可运行。
+"""
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+import json
+import sys
+
+# 嵌入的测验数据
+QUIZ_DATA = ${quizJson}
+
+class QuizWindow:
+    def __init__(self, quiz_data):
+        self.quiz_data = quiz_data
+        self.answered = False
+        self.root = tk.Tk()
+        self.root.title(f"Quiz - {quiz_data.get('category', '学习测验')}")
+        self.root.geometry("750x650")
+        self.root.configure(bg="#f5f7fa")
+        
+        # 窗口居中
+        self.root.update_idletasks()
+        width = 750
+        height = 650
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (height // 2)
+        self.root.geometry(f'{width}x{height}+{x}+{y}')
+        
+        self.setup_ui()
+        self.root.lift()
+        self.root.attributes('-topmost', True)
+        self.root.after(100, lambda: self.root.attributes('-topmost', False))
+        self.root.mainloop()
+    
+    def setup_ui(self):
+        main_frame = ttk.Frame(self.root, padding="25")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        category = self.quiz_data.get("category", "未分类")
+        category_label = ttk.Label(main_frame, text=f"📂 {category}", 
+                                   font=("Microsoft YaHei", 11), foreground="#666")
+        category_label.pack(anchor=tk.W)
+        
+        question_label = ttk.Label(main_frame, text="📝 题目：", 
+                                   font=("Microsoft YaHei", 13, "bold"))
+        question_label.pack(anchor=tk.W, pady=(15, 8))
+        
+        question_text = tk.Text(main_frame, height=5, wrap=tk.WORD, 
+                                font=("Microsoft YaHei", 12), bg="white",
+                                relief=tk.FLAT, padx=12, pady=12,
+                                highlightthickness=1, highlightbackground="#ddd")
+        question_text.insert("1.0", self.quiz_data["question"])
+        question_text.config(state=tk.DISABLED)
+        question_text.pack(fill=tk.X, pady=(0, 20))
+        
+        options_frame = ttk.LabelFrame(main_frame, text="选项", padding="15")
+        options_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        self.option_vars = []
+        self.option_buttons = []
+        
+        for i, option in enumerate(self.quiz_data["options"]):
+            var = tk.StringVar()
+            btn = tk.Radiobutton(options_frame, text=f"{chr(65+i)}. {option}", variable=var, 
+                                value=str(i), font=("Microsoft YaHei", 12),
+                                bg="#f5f7fa", activebackground="#e3f2fd",
+                                command=lambda idx=i: self.on_select(idx))
+            btn.config(highlightthickness=0)
+            btn.pack(anchor=tk.W, pady=6, fill=tk.X)
+            self.option_vars.append(var)
+            self.option_buttons.append(btn)
+        
+        self.submit_btn = ttk.Button(main_frame, text="提交答案", 
+                                     command=self.submit_answer, state=tk.DISABLED)
+        self.submit_btn.pack(pady=10)
+        
+        self.result_frame = ttk.LabelFrame(main_frame, text="答案解析", padding="15")
+        self.result_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+        
+        self.result_label = ttk.Label(self.result_frame, text="选择一个选项并点击提交查看答案", 
+                                      wraplength=650, font=("Microsoft YaHei", 11))
+        self.result_label.pack(anchor=tk.W)
+        
+        self.knowledge_label = ttk.Label(self.result_frame, text="", 
+                                         wraplength=650, font=("Microsoft YaHei", 10),
+                                         foreground="#2196F3")
+        self.knowledge_label.pack(anchor=tk.W, pady=(15, 0))
+    
+    def on_select(self, idx):
+        self.submit_btn.config(state=tk.NORMAL)
+    
+    def submit_answer(self):
+        if self.answered:
+            return
+        
+        selected = None
+        for i, var in enumerate(self.option_vars):
+            if var.get():
+                selected = i
+                break
+        
+        if selected is None:
+            messagebox.showwarning("提示", "请选择一个答案")
+            return
+        
+        self.answered = True
+        correct = self.quiz_data["correctIndex"]
+        
+        for i, btn in enumerate(self.option_buttons):
+            if i == correct:
+                btn.config(fg="#4CAF50", font=("Microsoft YaHei", 12, "bold"))
+            elif i == selected and selected != correct:
+                btn.config(fg="#f44336", font=("Microsoft YaHei", 12, "bold"))
+        
+        explanation = self.quiz_data.get("explanation", "")
+        knowledge = self.quiz_data.get("knowledgeSummary", "")
+        
+        if selected == correct:
+            result_text = f"✅ 回答正确！\\n\\n{explanation}"
+        else:
+            correct_answer = self.quiz_data['options'][correct]
+            result_text = f"❌ 回答错误\\n\\n正确答案是: {chr(65+correct)}. {correct_answer}\\n\\n{explanation}"
+        
+        self.result_label.config(text=result_text)
+        
+        if knowledge:
+            points = knowledge.split("|")
+            knowledge_text = "💡 核心知识点:\\n" + "\\n".join(f"  • {p.strip()}" for p in points if p.strip())
+            self.knowledge_label.config(text=knowledge_text)
+        
+        self.submit_btn.config(text="已提交", state=tk.DISABLED)
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--extract":
+        print(json.dumps(QUIZ_DATA))
+    else:
+        QuizWindow(QUIZ_DATA)
+`;
+}
+
 class QuizMCPServer {
   private server: Server;
   private config: QuizBookConfig;
@@ -98,7 +258,7 @@ class QuizMCPServer {
         tools: [
           {
             name: "generate_quiz",
-            description: "生成知识测验，自动弹出GUI窗口",
+            description: "生成知识测验，自动弹出Python GUI窗口",
             inputSchema: {
               type: "object",
               properties: {
@@ -207,50 +367,35 @@ class QuizMCPServer {
       category: args.category || "未分类",
     };
 
-    // Save JSON for persistence
     const quizBookDir = this.ensureQuizBookDir();
-    const jsonPath = join(quizBookDir, `quiz_${sessionId}.json`);
-    writeFileSync(jsonPath, JSON.stringify(quiz, null, 2), "utf-8");
+    const filename = generateQuizFilename(quiz);
+    const pyPath = join(quizBookDir, filename);
+    writeFileSync(pyPath, generateStandaloneQuizPy(quiz), "utf-8");
 
-    // Save temp file for Electron to read
-    if (!existsSync(this.tempDir)) {
-      mkdirSync(this.tempDir, { recursive: true });
-    }
-    const tempPath = join(this.tempDir, "current_quiz.json");
-    writeFileSync(tempPath, JSON.stringify(quiz, null, 2), "utf-8");
-
-    // Launch Electron GUI
-    this.launchElectron();
+    this.launchPythonGui(pyPath);
 
     return {
       content: [
         {
           type: "text",
-          text: `🎯 测验已生成！GUI窗口正在弹出...\n\n📚 分类：${quiz.category}\n💡 题目：${quiz.question.substring(0, 50)}...`,
+          text: `🎯 测验已生成！GUI窗口正在弹出...\n\n📚 分类：${quiz.category}\n💡 题目：${quiz.question.substring(0, 50)}${quiz.question.length > 50 ? '...' : ''}\n📁 已保存: ${filename}\n\n💡 提示: 这个文件可以直接双击运行复习`,
         },
       ],
     };
   }
 
-  private launchElectron(): void {
-    // Determine electron path
-    const electronPath = join(__dirname, "..", "node_modules", ".bin", "electron");
-    const electronExe = process.platform === "win32" ? `${electronPath}.cmd` : electronPath;
+  private launchPythonGui(quizPath: string): void {
+    // 直接运行Python文件（自包含格式）
+    const pythonExe = process.platform === "win32" ? "python" : "python3";
     
-    // Electron main script path
-    const electronMain = join(__dirname, "..", "dist", "electron", "main.js");
-
-    // Check if Electron is already running
-    // For simplicity, we always spawn a new instance
-    // In production, you might want to use single-instance lock
-    const child = spawn(electronExe, [electronMain], {
+    const child = spawn(pythonExe, [quizPath], {
       detached: true,
       stdio: "ignore",
+      shell: false,
     });
 
     child.unref();
-    
-    console.error(`[MCP] Launched Electron GUI (pid: ${child.pid})`);
+    console.error(`[MCP] Launched Python GUI: ${quizPath}`);
   }
 
   private async handleSetQuizBookPath(args: { path: string }) {
@@ -283,22 +428,22 @@ class QuizMCPServer {
     const quizBookDir = this.ensureQuizBookDir();
     try {
       const files = readdirSync(quizBookDir);
-      const jsonFiles = files.filter(f => f.endsWith(".json"));
+      const pyFiles = files.filter(f => f.endsWith(".py"));
       const categories = new Set<string>();
 
-      for (const file of jsonFiles) {
-        try {
-          const content = readFileSync(join(quizBookDir, file), "utf-8");
-          const quiz = JSON.parse(content);
-          if (quiz.category) categories.add(quiz.category);
-        } catch {}
+      for (const file of pyFiles) {
+        // 从文件名提取分类（格式: 日期_分类_题目.py）
+        const parts = file.replace('.py', '').split('_');
+        if (parts.length >= 2) {
+          categories.add(parts[1]);
+        }
       }
 
       return {
         content: [
           {
             type: "text",
-            text: `📚 Quiz Book 信息\n\n📁 路径：${quizBookDir}\n📝 题目数：${jsonFiles.length} 道\n📂 分类：${Array.from(categories).join(", ") || "未分类"}`,
+            text: `📚 Quiz Book 信息\n\n📁 路径：${quizBookDir}\n📝 题目数：${pyFiles.length} 道\n📂 分类：${Array.from(categories).join(", ") || "未分类"}\n\n💡 提示: 双击任意.py文件即可打开测验`,
           },
         ],
       };
@@ -316,17 +461,20 @@ class QuizMCPServer {
     }
 
     try {
+      // 支持打开Python文件
+      if (filePath.endsWith('.py')) {
+        this.launchPythonGui(filePath);
+        return { content: [{ type: "text", text: `📖 已打开测验` }] };
+      }
+
+      // 尝试解析为JSON
       const content = readFileSync(filePath, "utf-8");
       const quiz: QuizData = JSON.parse(content);
       
-      // Save to temp and launch Electron
-      if (!existsSync(this.tempDir)) {
-        mkdirSync(this.tempDir, { recursive: true });
-      }
       const tempPath = join(this.tempDir, "current_quiz.json");
       writeFileSync(tempPath, JSON.stringify(quiz, null, 2), "utf-8");
 
-      this.launchElectron();
+      this.launchPythonGui(tempPath);
 
       return { content: [{ type: "text", text: `📖 已打开测验：${quiz.question.substring(0, 30)}...` }] };
     } catch (error) {
