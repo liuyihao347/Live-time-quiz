@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Time Quiz</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <div class="app-header">
+      <div class="brand">
+        <div class="brand-icon">🎯</div>
+        <span class="brand-text">Live Time Quiz</span>
+      </div>
+      <div class="header-actions">
+        <button class="btn-icon" id="settingsBtn" title="设置">⚙️</button>
+        <button class="btn-icon" id="historyBtn" title="历史">📚</button>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Quiz Container -->
+      <div class="quiz-container" id="quizContainer">
+        <div class="empty-state">
+          <div class="empty-icon">📝</div>
+          <h3>等待测验生成...</h3>
+          <p>当AI完成任务后，测验将自动弹出</p>
+        </div>
+      </div>
+
+      <!-- Quiz Content (Hidden by default) -->
+      <div class="quiz-content" id="quizContent" style="display: none;">
+        <div class="quiz-card">
+          <div class="quiz-header-section">
+            <span class="category-tag" id="categoryTag">未分类</span>
+            <h2 class="question-text" id="questionText"></h2>
+          </div>
+
+          <div class="options-list" id="optionsList">
+            <!-- Options will be inserted here -->
+          </div>
+
+          <div class="feedback-section" id="feedbackSection" style="display: none;">
+            <div class="result-box" id="resultBox">
+              <span class="result-icon" id="resultIcon"></span>
+              <span id="resultText"></span>
+            </div>
+
+            <div class="explanation-box">
+              <div class="box-title">💡 答案解析</div>
+              <div class="box-content" id="explanationText"></div>
+            </div>
+
+            <div class="knowledge-box">
+              <div class="box-title">📚 核心知识点</div>
+              <ul class="knowledge-list" id="knowledgeList"></ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="action-bar" id="actionBar" style="display: none;">
+          <button class="btn-primary" id="saveBtn">
+            <span>💾</span>
+            <span>加入 Quiz Book</span>
+          </button>
+          <button class="btn-secondary" id="dismissBtn">
+            <span>✕</span>
+            <span>关闭窗口</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal" style="display: none;">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>⚙️ 设置</h3>
+          <button class="btn-close" id="closeSettings">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="setting-item">
+            <label class="setting-label">
+              <span>自动测验</span>
+              <span class="setting-desc">任务完成后自动生成测验</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="autoQuizToggle" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label">
+              <span>Quiz Book 路径</span>
+              <span class="setting-desc" id="currentPath">~/Desktop/QuizBook</span>
+            </label>
+            <button class="btn-secondary" id="changePathBtn">更改</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- History Modal -->
+    <div class="modal-overlay" id="historyModal" style="display: none;">
+      <div class="modal modal-large">
+        <div class="modal-header">
+          <h3>📚 Quiz Book</h3>
+          <button class="btn-close" id="closeHistory">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="quiz-list" id="quizList">
+            <div class="empty-state-small">
+              <p>暂无保存的测验</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

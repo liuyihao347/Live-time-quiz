@@ -3,8 +3,15 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-  Tool,
 } from "@modelcontextprotocol/sdk/types.js";
+import { writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync, unlinkSync } from "fs";
+import { join, resolve, dirname } from "path";
+import { homedir } from "os";
+import { spawn } from "child_process";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 interface QuizData {
   id: string;
@@ -14,25 +21,25 @@ interface QuizData {
   explanation: string;
   knowledgeSummary: string;
   createdAt: number;
+  category?: string;
 }
 
-interface QuizSession {
-  quiz: QuizData;
-  answered: boolean;
-  selectedIndex?: number;
-  isCorrect?: boolean;
+interface QuizBookConfig {
+  savePath: string;
+  autoQuizEnabled: boolean;
 }
 
 class QuizMCPServer {
   private server: Server;
-  private sessions: Map<string, QuizSession> = new Map();
-  private currentSessionId: string | null = null;
+  private config: QuizBookConfig;
+  private configPath: string;
+  private tempDir: string;
 
   constructor() {
     this.server = new Server(
       {
         name: "live-time-quiz-mcp",
-        version: "1.0.0",
+        version: "3.0.0",
       },
       {
         capabilities: {
@@ -41,11 +48,48 @@ class QuizMCPServer {
       }
     );
 
+    this.configPath = join(homedir(), ".live-time-quiz", "config.json");
+    this.tempDir = join(homedir(), ".live-time-quiz", "temp");
+    this.config = this.loadConfig();
     this.setupToolHandlers();
-    
+
     this.server.onerror = (error) => {
       console.error("[MCP Error]", error);
     };
+  }
+
+  private loadConfig(): QuizBookConfig {
+    try {
+      if (existsSync(this.configPath)) {
+        const configData = readFileSync(this.configPath, "utf-8");
+        return { ...{ savePath: join(homedir(), "Desktop", "QuizBook"), autoQuizEnabled: true }, ...JSON.parse(configData) };
+      }
+    } catch (error) {
+      console.error("Failed to load config:", error);
+    }
+    return {
+      savePath: join(homedir(), "Desktop", "QuizBook"),
+      autoQuizEnabled: true,
+    };
+  }
+
+  private saveConfig(): void {
+    try {
+      const configDir = join(homedir(), ".live-time-quiz");
+      if (!existsSync(configDir)) {
+        mkdirSync(configDir, { recursive: true });
+      }
+      writeFileSync(this.configPath, JSON.stringify(this.config, null, 2));
+    } catch (error) {
+      console.error("Failed to save config:", error);
+    }
+  }
+
+  private ensureQuizBookDir(): string {
+    if (!existsSync(this.config.savePath)) {
+      mkdirSync(this.config.savePath, { recursive: true });
+    }
+    return this.config.savePath;
   }
 
   private setupToolHandlers(): void {
@@ -54,82 +98,59 @@ class QuizMCPServer {
         tools: [
           {
             name: "generate_quiz",
-            description: "基于学习内容生成一道选择题测验。Agent应根据上下文自行生成题目、选项和解析。",
+            description: "生成知识测验，自动弹出GUI窗口",
             inputSchema: {
               type: "object",
               properties: {
-                question: {
-                  type: "string",
-                  description: "测验问题",
-                },
-                options: {
-                  type: "array",
-                  items: { type: "string" },
-                  description: "4个选项",
-                },
-                correctIndex: {
-                  type: "number",
-                  description: "正确选项索引 (0-3)",
-                },
-                explanation: {
-                  type: "string",
-                  description: "答案解析",
-                },
-                knowledgeSummary: {
-                  type: "string",
-                  description: "知识点总结",
-                },
+                question: { type: "string", description: "测验题目" },
+                options: { type: "array", items: { type: "string" }, description: "4个选项" },
+                correctIndex: { type: "number", description: "正确答案索引(0-3)" },
+                explanation: { type: "string", description: "简洁答案解析" },
+                knowledgeSummary: { type: "string", description: "核心知识点(用|分隔)" },
+                category: { type: "string", description: "题目分类" },
               },
               required: ["question", "options", "correctIndex", "explanation"],
             },
           },
           {
-            name: "submit_answer",
-            description: "提交用户对测验的答案，系统将自动判断对错并返回反馈",
+            name: "get_quizbook_info",
+            description: "获取Quiz Book信息",
+            inputSchema: { type: "object", properties: {} },
+          },
+          {
+            name: "open_quiz",
+            description: "打开历史测验复习",
             inputSchema: {
               type: "object",
               properties: {
-                sessionId: {
-                  type: "string",
-                  description: "测验会话ID",
-                },
-                selectedIndex: {
-                  type: "number",
-                  description: "用户选择的选项索引（0-based）",
-                },
+                filePath: { type: "string", description: "测验文件路径" },
               },
-              required: ["sessionId", "selectedIndex"],
+              required: ["filePath"],
             },
           },
           {
-            name: "get_quiz_feedback",
-            description: "获取测验的详细反馈和知识巩固建议",
+            name: "set_quizbook_path",
+            description: "设置Quiz Book保存路径",
             inputSchema: {
               type: "object",
               properties: {
-                sessionId: {
-                  type: "string",
-                  description: "测验会话ID",
-                },
+                path: { type: "string", description: "新路径，支持~/简写" },
               },
-              required: ["sessionId"],
+              required: ["path"],
             },
           },
           {
-            name: "skip_quiz",
-            description: "用户选择跳过测验，结束当前测验会话",
+            name: "toggle_auto_quiz",
+            description: "开启/关闭自动测验",
             inputSchema: {
               type: "object",
               properties: {
-                sessionId: {
-                  type: "string",
-                  description: "测验会话ID",
-                },
+                enabled: { type: "boolean", description: "是否开启" },
               },
-              required: ["sessionId"],
+              required: ["enabled"],
             },
           },
-        ] as Tool[],
+        ],
       };
     });
 
@@ -139,25 +160,22 @@ class QuizMCPServer {
       try {
         switch (name) {
           case "generate_quiz":
-            return await this.handleGenerateQuiz(args as { question: string; options: string[]; correctIndex: number; explanation: string; knowledgeSummary?: string });
-          case "submit_answer":
-            return await this.handleSubmitAnswer(args as { sessionId: string; selectedIndex: number });
-          case "get_quiz_feedback":
-            return await this.handleGetFeedback(args as { sessionId: string });
-          case "skip_quiz":
-            return await this.handleSkipQuiz(args as { sessionId: string });
+            return await this.handleGenerateQuiz(args as any);
+          case "get_quizbook_info":
+            return await this.handleGetQuizBookInfo();
+          case "open_quiz":
+            return await this.handleOpenQuiz(args as any);
+          case "set_quizbook_path":
+            return await this.handleSetQuizBookPath(args as any);
+          case "toggle_auto_quiz":
+            return await this.handleToggleAutoQuiz(args as any);
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         return {
-          content: [
-            {
-              type: "text",
-              text: `Error: ${errorMessage}`,
-            },
-          ],
+          content: [{ type: "text", text: `Error: ${errorMessage}` }],
           isError: true,
         };
       }
@@ -170,8 +188,13 @@ class QuizMCPServer {
     correctIndex: number;
     explanation: string;
     knowledgeSummary?: string;
+    category?: string;
   }) {
-    const sessionId = this.generateSessionId();
+    const sessionId = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    const knowledgePoints = args.knowledgeSummary
+      ? args.knowledgeSummary.split(/[|\n]/).map(s => s.trim()).filter(s => s)
+      : [];
 
     const quiz: QuizData = {
       id: sessionId,
@@ -179,117 +202,152 @@ class QuizMCPServer {
       options: args.options,
       correctIndex: args.correctIndex,
       explanation: args.explanation,
-      knowledgeSummary: args.knowledgeSummary || "",
+      knowledgeSummary: knowledgePoints.join("|"),
       createdAt: Date.now(),
+      category: args.category || "未分类",
     };
 
-    this.sessions.set(sessionId, { quiz, answered: false });
-    this.currentSessionId = sessionId;
+    // Save JSON for persistence
+    const quizBookDir = this.ensureQuizBookDir();
+    const jsonPath = join(quizBookDir, `quiz_${sessionId}.json`);
+    writeFileSync(jsonPath, JSON.stringify(quiz, null, 2), "utf-8");
+
+    // Save temp file for Electron to read
+    if (!existsSync(this.tempDir)) {
+      mkdirSync(this.tempDir, { recursive: true });
+    }
+    const tempPath = join(this.tempDir, "current_quiz.json");
+    writeFileSync(tempPath, JSON.stringify(quiz, null, 2), "utf-8");
+
+    // Launch Electron GUI
+    this.launchElectron();
 
     return {
       content: [
         {
           type: "text",
-          text: this.formatQuizDisplay(quiz, sessionId),
+          text: `🎯 测验已生成！GUI窗口正在弹出...\n\n📚 分类：${quiz.category}\n💡 题目：${quiz.question.substring(0, 50)}...`,
         },
       ],
     };
   }
 
-  private formatQuizDisplay(quiz: QuizData, sessionId: string): string {
-    const letters = ['A', 'B', 'C', 'D'];
-    let display = `## 🎯 知识测验\n\n`;
-    display += `**${quiz.question}**\n\n`;
-    display += `| 选项 | 内容 |\n`;
-    display += `|:---:|:---|\n`;
-    quiz.options.forEach((option, i) => {
-      display += `| **${letters[i]}** | ${option} |\n`;
+  private launchElectron(): void {
+    // Determine electron path
+    const electronPath = join(__dirname, "..", "node_modules", ".bin", "electron");
+    const electronExe = process.platform === "win32" ? `${electronPath}.cmd` : electronPath;
+    
+    // Electron main script path
+    const electronMain = join(__dirname, "..", "dist", "electron", "main.js");
+
+    // Check if Electron is already running
+    // For simplicity, we always spawn a new instance
+    // In production, you might want to use single-instance lock
+    const child = spawn(electronExe, [electronMain], {
+      detached: true,
+      stdio: "ignore",
     });
-    display += `\n> 💡 回复选项字母 **A / B / C / D** 即可作答\n`;
-    return display;
+
+    child.unref();
+    
+    console.error(`[MCP] Launched Electron GUI (pid: ${child.pid})`);
   }
 
-  private async handleSubmitAnswer(args: { sessionId: string; selectedIndex: number }) {
-    const session = this.sessions.get(args.sessionId);
+  private async handleSetQuizBookPath(args: { path: string }) {
+    let newPath = args.path.trim();
+    if (newPath.startsWith("~/") || newPath === "~") {
+      newPath = newPath.replace("~", homedir());
+    }
+    newPath = resolve(newPath);
 
-    if (!session) {
+    try {
+      if (!existsSync(newPath)) {
+        mkdirSync(newPath, { recursive: true });
+      }
+
+      this.config.savePath = newPath;
+      this.saveConfig();
+
       return {
-        content: [{ type: "text", text: "❌ 未找到测验会话，请重新生成测验。" }],
+        content: [{ type: "text", text: `✅ Quiz Book 路径已更新！\n\n📁 ${newPath}` }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `❌ 设置失败：${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
       };
     }
-
-    session.answered = true;
-    session.selectedIndex = args.selectedIndex;
-    session.isCorrect = args.selectedIndex === session.quiz.correctIndex;
-
-    const letters = ['A', 'B', 'C', 'D'];
-    const selectedLetter = letters[args.selectedIndex];
-    const correctLetter = letters[session.quiz.correctIndex];
-
-    let feedback = '';
-    if (session.isCorrect) {
-      feedback += `✅ **回答正确！**\n\n`;
-      feedback += `你的选择：**${selectedLetter}**\n\n`;
-    } else {
-      feedback += `❌ **回答错误**\n\n`;
-      feedback += `你的选择：**${selectedLetter}** · 正确答案：**${correctLetter}**\n\n`;
-    }
-    feedback += `💡 **解析：** ${session.quiz.explanation}`;
-    if (!session.isCorrect && session.quiz.knowledgeSummary) {
-      feedback += `\n\n📚 **知识点总结：** ${session.quiz.knowledgeSummary}`;
-    }
-
-    return {
-      content: [{ type: "text", text: feedback }],
-    };
   }
 
-  private async handleGetFeedback(args: { sessionId: string }) {
-    const session = this.sessions.get(args.sessionId);
+  private async handleGetQuizBookInfo() {
+    const quizBookDir = this.ensureQuizBookDir();
+    try {
+      const files = readdirSync(quizBookDir);
+      const jsonFiles = files.filter(f => f.endsWith(".json"));
+      const categories = new Set<string>();
 
-    if (!session) {
+      for (const file of jsonFiles) {
+        try {
+          const content = readFileSync(join(quizBookDir, file), "utf-8");
+          const quiz = JSON.parse(content);
+          if (quiz.category) categories.add(quiz.category);
+        } catch {}
+      }
+
       return {
-        content: [{ type: "text", text: "❌ 未找到测验会话。" }],
+        content: [
+          {
+            type: "text",
+            text: `📚 Quiz Book 信息\n\n📁 路径：${quizBookDir}\n📝 题目数：${jsonFiles.length} 道\n📂 分类：${Array.from(categories).join(", ") || "未分类"}`,
+          },
+        ],
+      };
+    } catch {
+      return {
+        content: [{ type: "text", text: `📚 Quiz Book 为空\n\n📁 ${quizBookDir}` }],
       };
     }
-
-    const letters = ['A', 'B', 'C', 'D'];
-    const status = session.isCorrect ? '✅ 正确' : session.answered ? '❌ 错误' : '⏳ 待回答';
-
-    let feedback = `📊 **测验详情**\n\n`;
-    feedback += `**问题：** ${session.quiz.question}\n`;
-    feedback += `**正确答案：** ${letters[session.quiz.correctIndex]}\n`;
-    feedback += `**你的答案：** ${session.answered ? letters[session.selectedIndex!] : '未作答'}\n`;
-    feedback += `**状态：** ${status}\n\n`;
-    feedback += `💡 **解析：** ${session.quiz.explanation}`;
-    if (session.quiz.knowledgeSummary) {
-      feedback += `\n\n📚 **知识点总结：** ${session.quiz.knowledgeSummary}`;
-    }
-
-    return {
-      content: [{ type: "text", text: feedback }],
-    };
   }
 
-  private async handleSkipQuiz(args: { sessionId: string }) {
-    this.sessions.delete(args.sessionId);
-    if (this.currentSessionId === args.sessionId) {
-      this.currentSessionId = null;
+  private async handleOpenQuiz(args: { filePath: string }) {
+    const filePath = resolve(args.filePath);
+    if (!existsSync(filePath)) {
+      return { content: [{ type: "text", text: `❌ 文件不存在：${filePath}` }], isError: true };
     }
 
-    return {
-      content: [{ type: "text", text: "👋 测验已跳过，随时可以重新开始！" }],
-    };
+    try {
+      const content = readFileSync(filePath, "utf-8");
+      const quiz: QuizData = JSON.parse(content);
+      
+      // Save to temp and launch Electron
+      if (!existsSync(this.tempDir)) {
+        mkdirSync(this.tempDir, { recursive: true });
+      }
+      const tempPath = join(this.tempDir, "current_quiz.json");
+      writeFileSync(tempPath, JSON.stringify(quiz, null, 2), "utf-8");
+
+      this.launchElectron();
+
+      return { content: [{ type: "text", text: `📖 已打开测验：${quiz.question.substring(0, 30)}...` }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `❌ 打开失败：${error instanceof Error ? error.message : String(error)}` }], isError: true };
+    }
   }
 
-  private generateSessionId(): string {
-    return `quiz_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  private async handleToggleAutoQuiz(args: { enabled: boolean }) {
+    this.config.autoQuizEnabled = args.enabled;
+    this.saveConfig();
+
+    return {
+      content: [{ type: "text", text: `✅ 自动测验已${args.enabled ? "开启" : "关闭"}` }],
+    };
   }
 
   async run(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
     console.error("Live-time Quiz MCP server running on stdio");
+    console.error(`Quiz Book: ${this.config.savePath}`);
   }
 }
 
