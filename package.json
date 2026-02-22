@@ -1,7 +1,7 @@
 {
-  "name": "live-time-quiz-mcp",
-  "version": "3.1.0",
-  "description": "MCP服务 + Python GUI - 自动弹出测验窗口",
+  "name": "live-time-tutorial-mcp",
+  "version": "4.0.0",
+  "description": "MCP server + Python GUI for instant quizzes and Notebook notes",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
