@@ -97,13 +97,9 @@ def _capture_gui_screenshot(root: tk.Tk, notebook_dir: Path, topic: str) -> Path
     # Capture screenshot
     screenshot = ImageGrab.grab(bbox=(x, y, x + width, y + height))
     
-    # Create screenshot directory
-    screenshot_dir = notebook_dir / "screenshots"
-    screenshot_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Save as PNG
+    # Save as PNG directly to notebook_dir
     filename = _sanitize_filename(topic) + ".png"
-    png_path = screenshot_dir / filename
+    png_path = notebook_dir / filename
     screenshot.save(str(png_path), "PNG", dpi=(144, 144))
     
     return png_path
