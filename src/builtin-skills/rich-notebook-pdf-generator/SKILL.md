@@ -16,13 +16,20 @@ Use this skill to generate comprehensive study notes with 6 educational sections
 ## Quick Start
 
 1. Generate rich markdown content following the 6-section structure below
-2. Create a JSON payload file
-3. Use the Python script at `scripts/notebook_pdf_writer.py` to generate the PDF
+2. Create a JSON payload file anywhere (will be auto-deleted after PDF generation)
+3. Use the Python script to generate the PDF (defaults to ~/Desktop/Notebook/)
 
 ```bash
-# Usage
-python scripts/notebook_pdf_writer.py <payload.json> <output.pdf>
+# Usage with explicit output path
+python <path_to_script>/notebook_pdf_writer.py <payload.json> [out.pdf]
+
+# Or use default output directory (~/Desktop/Notebook/)
+python <path_to_script>/notebook_pdf_writer.py <payload.json>
 ```
+
+**Default Output**: `~/Desktop/Notebook/{topic}.pdf`
+
+**Script Location**: `src/builtin-skills/rich-notebook-pdf-generator/scripts/notebook_pdf_writer.py`
 
 ## Content Structure
 
@@ -128,8 +135,8 @@ The `scripts/notebook_pdf_writer.py` script handles:
 
 ## Output
 
-- Default save location: `~/Desktop/Notebook/{topic}.pdf`
-- Uses `save_notebook_note_pdf` MCP tool
-- Default theme: `clean` with blue accent
-
-Dependencies: Python with reportlab (auto-checked by MCP)
+- **Default save location**: `~/Desktop/Notebook/{topic}.pdf`
+- **JSON cleanup**: Intermediate JSON file is automatically deleted after PDF generation
+- **Chinese support**: Built-in Chinese font support (SimHei, Microsoft YaHei, SimSun)
+- **Theme support**: `clean`, `warm`, `forest` with custom accent colors
+- **Dependencies**: Python with reportlab (`pip install reportlab`)

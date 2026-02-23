@@ -19,8 +19,63 @@ try:
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     from reportlab.graphics.shapes import Drawing
     from reportlab.graphics.charts.barcharts import VerticalBarChart
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib.fonts import addMapping
 except Exception:
     A4 = None
+
+
+def _register_chinese_fonts():
+    """Register Chinese fonts for PDF generation. Returns (normal_font, bold_font, italic_font)."""
+    import os
+    
+    # Check Windows fonts directory
+    windows_fonts_dir = Path("C:/Windows/Fonts")
+    
+    # Try different font options in order of preference
+    font_options = [
+        # (font_name, normal_file, bold_file)
+        ("MicrosoftYaHei", "msyh.ttc", "msyhbd.ttc"),
+        ("SimHei", "simhei.ttf", "simhei.ttf"),  # SimHei doesn't have separate bold
+        ("SimSun", "simsun.ttc", "simsun.ttc"),
+    ]
+    
+    for font_family, normal_file, bold_file in font_options:
+        normal_path = windows_fonts_dir / normal_file
+        bold_path = windows_fonts_dir / bold_file
+        
+        if normal_path.exists():
+            try:
+                # Register normal font
+                normal_font_name = f"{font_family}_Normal"
+                pdfmetrics.registerFont(TTFont(normal_font_name, str(normal_path)))
+                
+                # Register bold font (use normal if bold doesn't exist)
+                bold_font_name = f"{font_family}_Bold"
+                if bold_path.exists() and bold_file != normal_file:
+                    pdfmetrics.registerFont(TTFont(bold_font_name, str(bold_path)))
+                else:
+                    # Use same font for bold if no separate bold file
+                    bold_font_name = normal_font_name
+                
+                # Set up font family mapping
+                addMapping(font_family, 0, 0, normal_font_name)  # normal
+                addMapping(font_family, 1, 0, bold_font_name)     # bold
+                addMapping(font_family, 0, 1, normal_font_name)   # italic
+                addMapping(font_family, 1, 1, bold_font_name)     # bold+italic
+                
+                print(f"Successfully registered font: {font_family}")
+                # Return the actual font names to use
+                return normal_font_name, bold_font_name, normal_font_name
+                
+            except Exception as e:
+                print(f"Failed to register {font_family}: {e}")
+                continue
+    
+    # Ultimate fallback - this should not happen on normal Windows systems
+    print("WARNING: No Chinese fonts found, using Helvetica fallback")
+    return "Helvetica", "Helvetica-Bold", "Helvetica-Oblique"
 
 
 def _safe_hex_color(value: str | None, fallback: str) -> str:
@@ -33,23 +88,113 @@ def _safe_hex_color(value: str | None, fallback: str) -> str:
     return fallback
 
 
-def _render_markdown(story, markdown_text: str, h_style, h3_style, body_style, quote_style, code_style):
-    """Render markdown text into reportlab story."""
+def _markdown_to_plain(text: str) -> str:
+    """Strip markdown syntax, return plain text. No HTML tags to avoid font issues."""
+    # Remove bold markers
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    # Remove italic markers  
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    # Remove inline code markers
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    return text
+
+
+def _is_table_line(line: str) -> bool:
+    """Check if line is part of a markdown table."""
+    stripped = line.strip()
+    if not stripped.startswith('|'):
+        return False
+    return stripped.count('|') >= 2
+
+
+def _is_table_separator(line: str) -> bool:
+    """Check if line is a table separator like |---|---|"""
+    stripped = line.strip()
+    if not stripped.startswith('|'):
+        return False
+    content = stripped.replace('|', '').replace('-', '').replace(':', '').replace(' ', '')
+    return len(content) == 0
+
+
+def _parse_table(lines: list, start_idx: int) -> tuple:
+    """Parse markdown table starting at start_idx. Returns (table_data, end_idx)."""
+    table_lines = []
+    i = start_idx
+    while i < len(lines) and _is_table_line(lines[i]):
+        if not _is_table_separator(lines[i]):
+            table_lines.append(lines[i])
+        i += 1
+    
+    rows = []
+    for line in table_lines:
+        cells = [cell.strip() for cell in line.split('|')]
+        cells = [cell for cell in cells if cell]
+        if cells:
+            # Apply markdown conversion to each cell
+            cells = [_markdown_to_plain(cell) for cell in cells]
+            rows.append(cells)
+    
+    return rows, i
+
+
+def _is_flowchart_line(line: str) -> bool:
+    """Check if line is part of a flowchart using box-drawing characters."""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    # Must contain box drawing characters
+    box_chars = set('┌┐└┘├┤┬┴─│┏┓┗┛┣┫┳┻━┃╔╗╚╝╠╣╦╩═║')
+    has_box = any(c in box_chars for c in stripped)
+    if not has_box:
+        return False
+    # Count box chars vs total chars - should be significant portion
+    box_count = sum(1 for c in stripped if c in box_chars)
+    return box_count >= 2  # At least 2 box chars
+
+
+def _render_markdown(story, markdown_text: str, h_style, h3_style, body_style, quote_style, code_style, mono_style, table_style, mono_box_style):
+    """Render markdown text into reportlab story with full formatting support."""
     if not markdown_text.strip():
         return
 
     fence = chr(96) * 3
     in_code = False
-
-    for raw in markdown_text.splitlines():
+    in_flowchart = False
+    flowchart_buffer = []
+    lines = markdown_text.splitlines()
+    i = 0
+    
+    def _flush_flowchart():
+        nonlocal flowchart_buffer
+        if flowchart_buffer:
+            # Add spacing
+            story.append(Spacer(1, 4))
+            # Render flowchart with monospace
+            for fline in flowchart_buffer:
+                safe = (
+                    fline.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace(" ", "&nbsp;")
+                )
+                story.append(Paragraph(safe or "&nbsp;", mono_style))
+            story.append(Spacer(1, 4))
+            flowchart_buffer = []
+    
+    while i < len(lines):
+        raw = lines[i]
         line = raw.rstrip("\n")
         stripped = line.strip()
 
+        # Code fence handling
         if stripped.startswith(fence):
+            _flush_flowchart()
             in_code = not in_code
+            i += 1
             continue
 
         if in_code:
+            _flush_flowchart()
             safe = (
                 line.replace("&", "&amp;")
                 .replace("<", "&lt;")
@@ -57,38 +202,91 @@ def _render_markdown(story, markdown_text: str, h_style, h3_style, body_style, q
                 .replace(" ", "&nbsp;")
             )
             story.append(Paragraph(safe or "&nbsp;", code_style))
+            i += 1
             continue
 
+        # Empty line
         if not stripped:
+            _flush_flowchart()
             story.append(Spacer(1, 4))
+            i += 1
             continue
 
+        # Check if this is a flowchart line
+        is_flow = _is_flowchart_line(line)
+        if is_flow:
+            flowchart_buffer.append(line)
+            i += 1
+            continue
+        elif flowchart_buffer:
+            # We were in a flowchart but this line is not
+            _flush_flowchart()
+
+        # Headings
         if stripped.startswith("### "):
-            story.append(Paragraph(stripped[4:], h3_style))
+            html_text = _markdown_to_plain(stripped[4:])
+            story.append(Paragraph(html_text, h3_style))
+            i += 1
             continue
 
         if stripped.startswith("## "):
-            story.append(Paragraph(stripped[3:], h_style))
+            html_text = _markdown_to_plain(stripped[3:])
+            story.append(Paragraph(html_text, h_style))
+            i += 1
             continue
 
         if stripped.startswith("# "):
-            story.append(Paragraph(stripped[2:], h_style))
+            html_text = _markdown_to_plain(stripped[2:])
+            story.append(Paragraph(html_text, h_style))
+            i += 1
             continue
 
+        # Quote
         if stripped.startswith("> "):
-            story.append(Paragraph(stripped[2:], quote_style))
+            html_text = _markdown_to_plain(stripped[2:])
+            story.append(Paragraph(html_text, quote_style))
+            i += 1
             continue
 
+        # Table detection and rendering
+        if _is_table_line(stripped) and not _is_table_separator(stripped):
+            table_data, next_idx = _parse_table(lines, i)
+            if len(table_data) >= 1:
+                story.append(Spacer(1, 8))
+                t = Table(table_data, hAlign="LEFT", repeatRows=1)
+                t.setStyle(table_style)
+                story.append(t)
+                story.append(Spacer(1, 8))
+                i = next_idx
+                continue
+
+        # List items - convert checkboxes to numbered checklist
         if stripped.startswith("- ") or stripped.startswith("* "):
-            story.append(Paragraph(f"• {stripped[2:]}", body_style))
+            content = stripped[2:]
+            # Convert any checkbox to number (will be handled by tracking index)
+            if content.startswith("[ ] ") or content.startswith("[x] ") or content.startswith("[X] "):
+                content = content[4:]
+            prefix = ""  # Just use the content, numbering handled separately if needed
+            plain_text = _markdown_to_plain(content)
+            story.append(Paragraph(plain_text, body_style))
+            i += 1
             continue
 
-        ordered = re.match(r"^\d+[\.)]\s+(.*)$", stripped)
+        # Ordered list
+        ordered = re.match(r"^(\d+)[\.)]\s+(.*)$", stripped)
         if ordered:
-            story.append(Paragraph(stripped, body_style))
+            html_text = _markdown_to_plain(stripped)
+            story.append(Paragraph(html_text, body_style))
+            i += 1
             continue
 
-        story.append(Paragraph(stripped, body_style))
+        # Regular paragraph with markdown formatting
+        html_text = _markdown_to_plain(stripped)
+        story.append(Paragraph(html_text, body_style))
+        i += 1
+    
+    # Flush any remaining flowchart
+    _flush_flowchart()
 
 
 def _write_pdf(out_path: Path, payload: dict) -> None:
@@ -122,10 +320,13 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
         colors.HexColor("#FFF1E6") if theme == "warm" else colors.HexColor("#E6F7F1")
     )
 
+    # Register Chinese fonts
+    font_normal, font_bold, font_italic = _register_chinese_fonts()
+
     title_style = ParagraphStyle(
         "TitleStyle",
         parent=styles["Title"],
-        fontName="Helvetica-Bold",
+        fontName=font_bold,
         fontSize=18,
         leading=22,
         textColor=heading_color,
@@ -134,7 +335,7 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
     h_style = ParagraphStyle(
         "HeadingStyle",
         parent=styles["Heading2"],
-        fontName="Helvetica-Bold",
+        fontName=font_bold,
         fontSize=12,
         leading=16,
         textColor=heading_color,
@@ -144,7 +345,7 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
     h3_style = ParagraphStyle(
         "Heading3Style",
         parent=styles["Heading3"],
-        fontName="Helvetica-Bold",
+        fontName=font_bold,
         fontSize=10.8,
         leading=14,
         textColor=colors.HexColor("#1F2937"),
@@ -154,7 +355,7 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
     body_style = ParagraphStyle(
         "BodyStyle",
         parent=styles["BodyText"],
-        fontName="Helvetica",
+        fontName=font_normal,
         fontSize=10.5,
         leading=15,
         textColor=colors.HexColor("#111827"),
@@ -162,7 +363,7 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
     quote_style = ParagraphStyle(
         "QuoteStyle",
         parent=styles["BodyText"],
-        fontName="Helvetica-Oblique",
+        fontName=font_italic,
         fontSize=10,
         leading=14,
         textColor=colors.HexColor("#334155"),
@@ -172,20 +373,49 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
     code_style = ParagraphStyle(
         "CodeStyle",
         parent=styles["BodyText"],
-        fontName="Courier",
+        fontName=font_normal,  # Use Chinese font for code blocks too
         fontSize=9.2,
         leading=12,
         textColor=colors.HexColor("#0F172A"),
+        backColor=colors.HexColor("#F1F5F9"),
+        leftIndent=8,
+        rightIndent=8,
+        spaceBefore=4,
+        spaceAfter=4,
+    )
+    mono_style = ParagraphStyle(
+        "MonoStyle",
+        parent=styles["BodyText"],
+        fontName=font_normal,  # Use Chinese font for flowcharts
+        fontSize=9,
+        leading=11,
+        textColor=colors.HexColor("#374151"),
+        leftIndent=0,
     )
     meta_style = ParagraphStyle(
         "MetaStyle",
         parent=styles["BodyText"],
-        fontName="Helvetica",
+        fontName=font_normal,
         fontSize=9.5,
         leading=13,
         textColor=colors.HexColor("#475569"),
         spaceAfter=8,
     )
+    # Table style for markdown tables - use Chinese font for all cells
+    table_style = TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), table_header_bg),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1E293B")),
+        ("FONTNAME", (0, 0), (-1, 0), font_bold),  # Header row
+        ("FONTNAME", (0, 1), (-1, -1), font_normal),  # Data rows use Chinese font
+        ("FONTSIZE", (0, 0), (-1, -1), 9.5),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ])
 
     story = []
     story.append(Paragraph(payload.get("topic") or "Notebook", title_style))
@@ -199,7 +429,7 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
 
     content_markdown = (payload.get("contentMarkdown") or "").strip()
     if content_markdown:
-        _render_markdown(story, content_markdown, h_style, h3_style, body_style, quote_style, code_style)
+        _render_markdown(story, content_markdown, h_style, h3_style, body_style, quote_style, code_style, mono_style, table_style, None)
 
     for sec in payload.get("sections", []) or []:
         story.append(Paragraph(sec.get("heading", ""), h_style))
@@ -222,7 +452,7 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
                 [
                     ("BACKGROUND", (0, 0), (-1, 0), table_header_bg),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1E293B")),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTNAME", (0, 0), (-1, 0), font_bold),
                     ("FONTSIZE", (0, 0), (-1, -1), 9.5),
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
                     ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
@@ -269,14 +499,53 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
 
 def main() -> int:
     """Main entry point."""
-    if len(sys.argv) < 3:
-        print("Usage: python notebook_pdf_writer.py <payload.json> <out.pdf>")
+    import os
+    import shutil
+    
+    # Default output directory
+    default_notebook_dir = Path.home() / "Desktop" / "Notebook"
+    
+    if len(sys.argv) < 2:
+        print("Usage: python notebook_pdf_writer.py <payload.json> [out.pdf]")
         return 1
+    
     payload_path = Path(sys.argv[1])
-    out_path = Path(sys.argv[2])
-    payload = json.loads(payload_path.read_text(encoding="utf-8"))
-    _write_pdf(out_path, payload)
-    print(str(out_path))
+    
+    # Parse payload to get topic for default filename
+    try:
+        payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        topic = payload.get("topic", "notebook")
+    except Exception as e:
+        print(f"Error reading payload: {e}")
+        return 1
+    
+    # Determine output path
+    if len(sys.argv) >= 3:
+        out_path = Path(sys.argv[2])
+    else:
+        # Use topic as filename, default to Notebook directory
+        safe_filename = re.sub(r'[\\/*?:"<>|]', "_", topic) + ".pdf"
+        out_path = default_notebook_dir / safe_filename
+    
+    # Ensure output directory exists
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Generate PDF
+    try:
+        _write_pdf(out_path, payload)
+        print(str(out_path))
+    except Exception as e:
+        print(f"Error generating PDF: {e}")
+        return 1
+    
+    # Delete JSON intermediate file after successful PDF generation
+    try:
+        if payload_path.exists():
+            payload_path.unlink()
+            print(f"Cleaned up: {payload_path}")
+    except Exception as e:
+        print(f"Warning: Could not delete JSON file: {e}")
+    
     return 0
 
 
