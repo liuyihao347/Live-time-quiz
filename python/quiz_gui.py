@@ -110,6 +110,9 @@ class QuizWindow:
         self.quiz_data = quiz_data
         self.answered = False
         self.selected_index = None
+        self.is_correct = False
+        self.saved_to_notebook = False
+        self.screenshot_path = None
         self.option_rows = []
 
         self.config = _load_config()
@@ -133,6 +136,7 @@ class QuizWindow:
         self.root.lift()
         self.root.attributes('-topmost', True)
         self.root.after(100, lambda: self.root.attributes('-topmost', False))
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.mainloop()
 
     def _setup_style(self):
@@ -410,29 +414,36 @@ class QuizWindow:
         self.result_text.insert("1.0", text)
         self.result_text.config(state=tk.DISABLED)
 
+        self.is_correct = is_correct
         self.add_btn.config(state=tk.NORMAL)
         self.note_status.config(text="Ready to save screenshot")
 
-        # Save result for MCP to read
-        self._save_quiz_result(selected, is_correct)
+    def _on_close(self):
+        """Handle window close: save result and destroy."""
+        self._save_quiz_result()
+        self.root.destroy()
 
-    def _save_quiz_result(self, selected: int, is_correct: bool):
+    def _save_quiz_result(self):
         """Save quiz result to file for MCP to read."""
         try:
             quiz_file = Path(sys.argv[1]) if len(sys.argv) > 1 else None
             if quiz_file:
                 result_path = quiz_file.parent / f"{quiz_file.stem}.result.json"
+                selected = self.selected_index
+                correct = int(self.quiz_data.get("correctIndex", 0))
                 result = {
                     "quizId": self.quiz_data.get("id"),
                     "question": self.quiz_data.get("question"),
                     "selectedIndex": selected,
-                    "selectedAnswer": self.quiz_data.get("options", [])[selected] if selected >= 0 else None,
-                    "correctIndex": self.quiz_data.get("correctIndex", 0),
-                    "correctAnswer": self.quiz_data.get("options", [])[self.quiz_data.get("correctIndex", 0)],
-                    "isCorrect": is_correct,
+                    "selectedAnswer": self.quiz_data.get("options", [])[selected] if selected is not None and selected >= 0 else None,
+                    "correctIndex": correct,
+                    "correctAnswer": self.quiz_data.get("options", [])[correct],
+                    "isCorrect": self.is_correct,
                     "explanation": self.quiz_data.get("explanation"),
                     "knowledgeSummary": self.quiz_data.get("knowledgeSummary"),
                     "category": self.quiz_data.get("category"),
+                    "savedToNotebook": self.saved_to_notebook,
+                    "screenshotPath": str(self.screenshot_path) if self.screenshot_path else None,
                     "answeredAt": datetime.now().isoformat(),
                 }
                 result_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -446,10 +457,12 @@ class QuizWindow:
         try:
             topic = self.quiz_data.get("question", "quiz_result").strip()
             png_path = _capture_gui_screenshot(self.root, self.notebook_dir, topic)
-            self.note_status.config(text=f"Saved: {png_path}")
-            messagebox.showinfo("Saved", f"Screenshot saved:\n{png_path}")
+            self.saved_to_notebook = True
+            self.screenshot_path = png_path
+            self.note_status.config(text=f"Great! Check {self.notebook_dir} later.")
+            self.add_btn.config(state=tk.DISABLED)
         except Exception as e:
-            messagebox.showerror("Failed", str(e))
+            self.note_status.config(text=f"Failed: {e}")
 
 def load_quiz_from_args():
     """Load quiz data from command line args."""

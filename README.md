@@ -20,27 +20,24 @@
 
 ## 🧠 Highlights
 
-- **Polished GUI** - Modern Python quiz interface with card-style options
-- **One-click Submit** - Click any option to submit instantly (no extra submit step)
 - **Instant Feedback** - Clear result status, explanation, and walkthrough demo
-- **Notebook Export** - Click "Save to Notebook" to capture a screenshot of your quiz result
-- **Result Feedback** - After quiz completion, AI receives your answer and asks if you want a detailed study note
-- **Skip Anytime** - Decline quizzes without disrupting workflow
-- **Easy Integration** - Works with Cursor, Kilo Code, Windsurf & more
+- **Notebook Export** - Click "Save to Notebook" to auto-generate PDF
+- **Auto PDF Generation** - When user clicks Save to Notebook, PDF is generated immediately after quiz closes
+- **Easy Integration** - Works with Cursor, Kilo Code, Windsuraf & more
 
 ## 🔄 How It Works
 
 ```
-Task Complete → AI Summarizes → Generate Quiz → User Answers in GUI → MCP Returns Result → AI Asks for PDF Note → Generate Rich Content → Save PDF to Notebook
+Task Complete → AI Summarizes → Generate Quiz → User Answers in GUI 
+→ [If Save to Notebook clicked] → PDF Auto-generated → Saved to ~/Desktop/Notebook/
 ```
 
 1. **Task Trigger** - AI extracts key knowledge points after finishing a task
 2. **Quiz Generation** - Creates a multiple-choice question and opens GUI
 3. **User Answers** - Click an option in the GUI to submit
-4. **Result Captured** - MCP receives your answer, correctness, and explanation
-5. **Study Note Prompt** - AI asks if you want a detailed PDF study note
-6. **Rich Content Generation** - Creates comprehensive notes with terminology, examples, analogies
-7. **PDF Export** - Saves a beautifully formatted note to ~/Desktop/Notebook/notes/
+4. **Save to Notebook** - User clicks button to save screenshot (shows "Great! Check {path} later.")
+5. **Window Closes** - MCP waits for GUI window to close
+6. **Auto PDF** - If Save to Notebook was clicked, agent automatically creates rich PDF with screenshot as header
 
 ## 🚀 Installation
 
@@ -80,66 +77,78 @@ Restart your IDE to activate the MCP service.
 - **Auto-trigger**: AI asks for a quiz after completing tasks
 - **Manual trigger**: Type "give me a quiz" or "quiz" in chat
 - **Answer in GUI**: Click an option card to submit instantly
-- **Save screenshot**: Click **Save to Notebook** after answering to capture result
-- **Get study note**: AI will ask if you want a detailed PDF after quiz completion
+- **Save to Notebook**: Click **Save to Notebook** after answering
+- **Close window**: Close the GUI window when done
+- **PDF auto-generated**: If you clicked Save to Notebook, a PDF will be created automatically
+
+All files are saved directly to `~/Desktop/Notebook/`:
+- `{topic}.pdf` - Rich study note with screenshot as header
 
 ## 🧰 MCP Tools
 
-- `generate_quiz`: Generate a quiz, open GUI, wait for answer, and return result with system prompt
-- `set_notebook_path`: Set custom Notebook path (default: `~/Desktop/Notebook`)
-- `save_notebook_note_pdf`: Generate a beautiful PDF study note using agent skills
+### `generate_quiz`
 
-### Built-in Agent Skills
+Generate a quiz and open the GUI window. MCP waits for window to close, then returns:
+- Question, your selected answer, correct answer
+- Explanation and knowledge points
+- Whether Save to Notebook was clicked
+- Screenshot path (if saved)
 
-The MCP includes an agent skill in `src/builtin-skills/`:
+**Behavior:**
+- If user clicked **Save to Notebook** → Agent automatically calls `save_notebook_note_pdf`
+- If user did NOT click → Agent summarizes and ends conversation
 
-**`rich-notebook-pdf-generator`**: Comprehensive study notes with 6 educational sections:
-- Terminology Definitions
-- Knowledge Network  
-- Key Points
-- Practical Examples
-- Analogies & Comparisons
-- Visual Summary
+### `set_notebook_path`
 
-### `generate_quiz` Workflow
+Set custom Notebook storage path (default: `~/Desktop/Notebook`).
 
-When you call `generate_quiz`:
-1. GUI window opens with the quiz
-2. MCP waits (up to 5 minutes) for you to answer
-3. Returns your answer + correctness + explanation
-4. Includes system prompt asking if you want a PDF study note
-5. If yes → use `rich-notebook-pdf-generator` skill to create content
-6. Call `save_notebook_note_pdf` to generate the PDF
+### `save_notebook_note_pdf`
 
-Use your agent skills to generate rich markdown first, then pass it via `contentMarkdown`.
-This avoids rigid templates and gives flexible structure and styling.
+Generate a rich PDF study note using the `rich-notebook-pdf-generator` agent skill.
 
-- Preferred flexible input: `contentMarkdown`
-- Optional structured input: `sections`, `keyPoints`, `table`, `chart`
-- Optional style input: `design.theme` (`clean` / `warm` / `forest`), `design.accentColor`
+**Parameters:**
+- `topic` - Note title / PDF filename
+- `screenshotPath` (optional) - Path to screenshot for header image
 
-Minimal example payload:
+## 🎭 Built-in Agent Skills
 
-```json
-{
-  "topic": "Binary Search Decision Strategy",
-  "summary": "Fast review note",
-  "contentMarkdown": "# Core Idea\nBinary search halves search space each step.\n\n## Checklist\n- Sorted data required\n- Use low/high boundaries\n- Prevent overflow in mid\n\n> Prefer binary search when random access is O(1)",
-  "tags": ["algorithm", "search"],
-  "design": {
-    "theme": "clean",
-    "accentColor": "#2563EB"
-  }
-}
+Located in `src/builtin-skills/rich-notebook-pdf-generator/`:
+
+**SKILL.md** guides the agent to generate content with:
+
+1. **Terminology & Definitions** - Key terms with bold highlighting
+2. **Key Concepts & Principles** - Core ideas with critical takeaways
+3. **Practical Examples** - Runnable code and real-world scenarios
+4. **Analogy & Memory Aids** - Everyday analogies and comparisons
+5. **Summary Table** - Comparison tables for quick review
+6. **Process Flowchart** - Text-based flowcharts using box-drawing characters
+
+**Formatting Rules:**
+- Use **bold liberally** for key terms and conclusions
+- Numbered hierarchy: `1.`, `1.1`, `1.2`, `2.`...
+- Tables over bullet lists
+- No checkboxes (`[ ]` or `[x]`)
+- Screenshot inserted as header image below title
+
+**PDF Generation:**
+```bash
+python scripts/notebook_pdf_writer.py <payload.json> [out.pdf]
 ```
 
 ## 🏗️ Project Structure
 
-- `src/index.ts`: MCP service core with quiz generation and PDF export
-- `python/quiz_gui.py`: Python GUI for interactive quiz
-- `src/builtin-skills/`: Agent skills for PDF content generation
+```
+Live-time-tutorial/
+├── src/
+│   ├── index.ts              # MCP server core
+│   └── builtin-skills/
+│       └── rich-notebook-pdf-generator/  # Agent skill & PDF script
+├── python/
+│   └── quiz_gui.py           # Interactive quiz GUI
+└── dist/                     # Compiled output
+```
 
-## 📄 License
+## � License
 
 [MIT](LICENSE)
 

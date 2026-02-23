@@ -16,7 +16,7 @@ try:
     from reportlab.lib.units import mm
     from reportlab.lib import colors
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
     from reportlab.graphics.shapes import Drawing
     from reportlab.graphics.charts.barcharts import VerticalBarChart
     from reportlab.pdfbase import pdfmetrics
@@ -419,6 +419,29 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
 
     story = []
     story.append(Paragraph(payload.get("topic") or "Notebook", title_style))
+
+    # Insert screenshot as header image right below the title
+    screenshot_path = payload.get("screenshotPath")
+    if screenshot_path and Path(screenshot_path).exists():
+        try:
+            img = Image(screenshot_path)
+            # Scale to fit page width while maintaining aspect ratio
+            page_width = A4[0] - 36 * mm
+            ratio = page_width / img.drawWidth
+            img.drawWidth = page_width
+            img.drawHeight = img.drawHeight * ratio
+            # Cap max height
+            max_h = 120 * mm
+            if img.drawHeight > max_h:
+                scale = max_h / img.drawHeight
+                img.drawHeight = max_h
+                img.drawWidth = img.drawWidth * scale
+            story.append(Spacer(1, 6))
+            story.append(img)
+            story.append(Spacer(1, 8))
+        except Exception as e:
+            print(f"Warning: Could not insert screenshot: {e}")
+
     summary = (payload.get("summary") or "").strip()
     if summary:
         story.append(Paragraph(summary, meta_style))
@@ -538,13 +561,24 @@ def main() -> int:
         print(f"Error generating PDF: {e}")
         return 1
     
-    # Delete JSON intermediate file after successful PDF generation
+    # Delete JSON intermediate file and screenshot after successful PDF generation
     try:
         if payload_path.exists():
             payload_path.unlink()
             print(f"Cleaned up: {payload_path}")
     except Exception as e:
         print(f"Warning: Could not delete JSON file: {e}")
+    
+    # Delete screenshot file since it's now embedded in the PDF
+    screenshot_path = payload.get("screenshotPath")
+    if screenshot_path:
+        try:
+            sp = Path(screenshot_path)
+            if sp.exists():
+                sp.unlink()
+                print(f"Cleaned up screenshot: {sp}")
+        except Exception as e:
+            print(f"Warning: Could not delete screenshot: {e}")
     
     return 0
 

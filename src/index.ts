@@ -10,9 +10,6 @@ import { homedir } from "os";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
-// Promisified sleep for polling
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -31,20 +28,6 @@ interface NotebookConfig {
   notebookPath: string;
 }
 
-interface NotebookNotePayload {
-  topic: string;
-  summary?: string;
-  contentMarkdown?: string;
-  tags?: string[];
-  sections?: Array<{ heading: string; body: string }>;
-  keyPoints?: string[];
-  table?: { headers: string[]; rows: string[][] };
-  chart?: { title?: string; labels: string[]; values: number[] };
-  design?: {
-    theme?: "clean" | "warm" | "forest";
-    accentColor?: string;
-  };
-}
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[<>:"/\\|?*]/g, "").trim().substring(0, 40);
@@ -170,6 +153,7 @@ class QuizMCPServer {
               type: "object",
               properties: {
                 topic: { type: "string", description: "Note topic (used as filename for the PDF)" },
+                screenshotPath: { type: "string", description: "Optional path to a screenshot image to include as header image in the PDF" },
               },
               required: ["topic"],
             },
@@ -232,89 +216,94 @@ class QuizMCPServer {
     const quizDataPath = join(notebookDir, filename);
     writeFileSync(quizDataPath, JSON.stringify(quiz, null, 2), "utf-8");
 
-    // Launch GUI and wait for result
-    this.launchPythonGui(quizDataPath);
+    // Launch GUI and wait for window to close
+    const quizResultPath = join(notebookDir, `${filename}.result.json`);
+    await this.launchPythonGuiAndWait(quizDataPath);
 
-    // Poll for result file (max 5 minutes)
-    const resultPath = join(notebookDir, `${filename}.result.json`);
-    const maxWaitTime = 5 * 60 * 1000; // 5 minutes
-    const pollInterval = 1000; // 1 second
-    let waited = 0;
+    // Read result file written on window close
+    if (existsSync(quizResultPath)) {
+      try {
+        const resultData = JSON.parse(readFileSync(quizResultPath, "utf-8"));
+        const savedToNotebook = resultData.savedToNotebook === true;
+        const screenshotPath = resultData.screenshotPath || null;
 
-    while (waited < maxWaitTime) {
-      if (existsSync(resultPath)) {
-        try {
-          const resultData = JSON.parse(readFileSync(resultPath, "utf-8"));
-          const systemPrompt = `
+        let systemPrompt: string;
+        if (savedToNotebook) {
+          systemPrompt = `
 
 [SYSTEM PROMPT]
-The user has completed the quiz. Before ending the conversation, you MUST ask them:
-"Would you like me to create a detailed PDF study note for this topic?"
+The user clicked "Save to Notebook" and a screenshot was saved${screenshotPath ? ` at: ${screenshotPath}` : ""}.
+You MUST now immediately call the save_notebook_note_pdf tool with the topic name to create a PDF study note.
+The PDF should include the screenshot as a header image. Pass the screenshotPath in the tool call.`;
+        } else {
+          systemPrompt = `
 
-If they agree, follow these steps:
-1. Call save_notebook_note_pdf tool with the topic name
-2. The tool will return the path to the rich-notebook-pdf-generator skill
-3. Read the skill.md at that path
-4. Follow the skill instructions to generate rich content with 6 sections
-5. Use the Python script in scripts/ folder to assemble the PDF`;
+[SYSTEM PROMPT]
+The user did NOT click "Save to Notebook". Do not create a PDF note. Simply summarize the quiz result and end the conversation.`;
+        }
 
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Quiz completed!
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Quiz completed!
 
 Question: ${resultData.question}
-Your Answer: ${resultData.selectedAnswer} (${resultData.isCorrect ? "Correct" : "Incorrect"})
+Your Answer: ${resultData.selectedAnswer || "(not answered)"} (${resultData.isCorrect ? "Correct" : "Incorrect"})
 Correct Answer: ${resultData.correctAnswer}
 Explanation: ${resultData.explanation || "N/A"}
 Knowledge Points: ${resultData.knowledgeSummary || "N/A"}
-
+Saved to Notebook: ${savedToNotebook ? "Yes" : "No"}${savedToNotebook && screenshotPath ? `\nScreenshot: ${screenshotPath}` : ""}
 ${systemPrompt}`,
-              },
-            ],
-          };
-        } catch (error) {
-          // Continue polling if result file is incomplete
-        }
+            },
+          ],
+        };
+      } catch (error) {
+        // Fall through if result file is malformed
       }
-      await sleep(pollInterval);
-      waited += pollInterval;
     }
 
-    // Timeout - return without waiting for result
+    // No result file (user closed without answering)
     return {
       content: [
         {
           type: "text",
-          text: `Quiz launched. GUI window should appear.
+          text: `Quiz window was closed.
 
 Category: ${quiz.category}
 Question: ${quiz.question.substring(0, 70)}${quiz.question.length > 70 ? "..." : ""}
 
-Note: Timed out waiting for answer (5 minutes). If user completed the quiz, check the result file manually:
-${resultPath}`,
+The user closed the quiz window. No answer was recorded.`,
         },
       ],
     };
   }
 
-  private launchPythonGui(quizPath: string): void {
-    const pythonExe = process.platform === "win32" ? "python" : "python3";
-    const guiScriptPath = resolve(__dirname, "..", "python", "quiz_gui.py");
+  private launchPythonGuiAndWait(quizPath: string): Promise<void> {
+    return new Promise((resolvePromise, rejectPromise) => {
+      const pythonExe = process.platform === "win32" ? "python" : "python3";
+      const guiScriptPath = resolve(__dirname, "..", "python", "quiz_gui.py");
 
-    if (!existsSync(guiScriptPath)) {
-      throw new Error(`Python GUI script not found: ${guiScriptPath}`);
-    }
+      if (!existsSync(guiScriptPath)) {
+        rejectPromise(new Error(`Python GUI script not found: ${guiScriptPath}`));
+        return;
+      }
 
-    const child = spawn(pythonExe, [guiScriptPath, quizPath], {
-      detached: true,
-      stdio: "ignore",
-      shell: false,
+      const child = spawn(pythonExe, [guiScriptPath, quizPath], {
+        stdio: "ignore",
+        shell: false,
+      });
+
+      console.error(`[MCP] Launched Python GUI: ${guiScriptPath} ${quizPath}`);
+
+      child.on("close", () => {
+        resolvePromise();
+      });
+
+      child.on("error", (err) => {
+        rejectPromise(err);
+      });
     });
-
-    child.unref();
-    console.error(`[MCP] Launched Python GUI: ${guiScriptPath} ${quizPath}`);
   }
 
   private async handleSetNotebookPath(args: { path: string }) {
@@ -356,14 +345,17 @@ If they agree, follow these steps:
     }
   }
 
-  private async handleSaveNotebookNotePdf(args: { topic: string }) {
+  private async handleSaveNotebookNotePdf(args: { topic: string; screenshotPath?: string }) {
     const topic = (args.topic || "note").trim();
     if (!topic) {
       return { content: [{ type: "text", text: "topic is required" }], isError: true };
     }
 
-    // Get the skill directory path
     const skillDir = resolve(__dirname, "builtin-skills", "rich-notebook-pdf-generator");
+    const notebookDir = this.config.notebookPath;
+    const screenshotInfo = args.screenshotPath
+      ? `\nScreenshot path for header image: ${args.screenshotPath}`
+      : "";
 
     return {
       content: [
@@ -372,13 +364,14 @@ If they agree, follow these steps:
           text: `Skill location: ${skillDir}
 
 [SYSTEM PROMPT]
-You need to create a PDF study note for topic: "${topic}"
+You need to create a PDF study note for topic: "${topic}"${screenshotInfo}
 
 Follow these steps:
 1. Read the skill.md at: ${skillDir}/SKILL.md
-2. Follow the instructions in skill.md to generate rich content with 6 sections
-3. Use the Python script at ${skillDir}/scripts/notebook_pdf_writer.py to assemble the PDF
-4. Save the PDF to: ~/Desktop/Notebook/${this.sanitizeNoteFilename(topic)}.pdf
+2. Follow the instructions in skill.md to generate rich content
+3. Create a JSON payload file including "screenshotPath" field if a screenshot is available
+4. Use the Python script at ${skillDir}/scripts/notebook_pdf_writer.py to assemble the PDF
+5. Save the PDF to: ${notebookDir}/${this.sanitizeNoteFilename(topic)}.pdf
 
 Do not end the conversation until you have successfully created the PDF.`,
         },
