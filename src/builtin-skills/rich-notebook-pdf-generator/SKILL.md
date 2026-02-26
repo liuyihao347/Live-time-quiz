@@ -16,8 +16,25 @@ Generate structured, visually clear PDF study notes.
 ## Quick Start
 
 1. Generate rich markdown content following the content structure below
-2. Create a JSON payload file (auto-deleted after PDF generation)
+2. Pass JSON payload to the script via **stdin** (recommended) or file
 3. Run the script to produce the PDF
+
+### Method 1: Standard Input (Recommended - No intermediate file)
+
+```bash
+# Pipe JSON directly to the script
+echo '{"topic": "Example", "contentMarkdown": "..."}' | python scripts/notebook_pdf_writer.py - [out.pdf]
+
+# Or use a heredoc
+python scripts/notebook_pdf_writer.py - [out.pdf] << 'EOF'
+{
+  "topic": "Your Topic",
+  "contentMarkdown": "## 1. ..."
+}
+EOF
+```
+
+### Method 2: File Input (Legacy mode - auto-deletes file after generation)
 
 ```bash
 python scripts/notebook_pdf_writer.py <payload.json> [out.pdf]
@@ -163,8 +180,18 @@ When applicable, describe a decision or process flow using a text-based flowchar
 
 **Dependencies**: `reportlab` (`pip install reportlab`)
 
+**Usage**:
+```bash
+# From stdin (no intermediate files)
+echo '{...}' | python scripts/notebook_pdf_writer.py - [out.pdf]
+
+# From file (legacy, auto-deleted after use)
+python scripts/notebook_pdf_writer.py <payload.json> [out.pdf]
+```
+
 ## Output
 
 - **Default save location**: `~/Desktop/Notebook/{topic}.pdf`
-- **JSON cleanup**: The result.json intermediate file is auto-deleted after PDF generation
 - **Screenshot cleanup**: Screenshot file is auto-deleted after being embedded in PDF
+
+When using stdin mode, no intermediate JSON files are created.

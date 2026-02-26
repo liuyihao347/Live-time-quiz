@@ -212,14 +212,15 @@ class QuizMCPServer {
     };
 
     const notebookDir = this.ensureNotebookDir();
+    const tempDir = this.ensureTempDir();
     const filename = generateQuizFilename(quiz);
-    const quizDataPath = join(notebookDir, filename);
+    const quizDataPath = join(tempDir, filename);
     writeFileSync(quizDataPath, JSON.stringify(quiz, null, 2), "utf-8");
 
     // Launch GUI and wait for window to close
     const resultFilename = filename.replace('.json', '.result.json');
     const quizResultPath = join(notebookDir, resultFilename);
-    await this.launchPythonGuiAndWait(quizDataPath);
+    await this.launchPythonGuiAndWait(quizDataPath, quizResultPath);
 
     // Clean up: delete the quiz input file (it's temporary)
     try {
@@ -270,6 +271,15 @@ ${systemPrompt}`,
         };
       } catch (error) {
         // Fall through if result file is malformed
+      } finally {
+        // Clean up: delete the result file after reading
+        try {
+          if (existsSync(quizResultPath)) {
+            unlinkSync(quizResultPath);
+          }
+        } catch {
+          // Ignore cleanup errors
+        }
       }
     }
 
@@ -289,7 +299,7 @@ The user closed the quiz window without answering. Do NOT generate another quiz.
     };
   }
 
-  private launchPythonGuiAndWait(quizPath: string): Promise<void> {
+  private launchPythonGuiAndWait(quizPath: string, resultPath: string): Promise<void> {
     return new Promise((resolvePromise, rejectPromise) => {
       const pythonExe = process.platform === "win32" ? "python" : "python3";
       const guiScriptPath = resolve(__dirname, "..", "python", "quiz_gui.py");
@@ -299,12 +309,12 @@ The user closed the quiz window without answering. Do NOT generate another quiz.
         return;
       }
 
-      const child = spawn(pythonExe, [guiScriptPath, quizPath], {
+      const child = spawn(pythonExe, [guiScriptPath, quizPath, resultPath], {
         stdio: "ignore",
         shell: false,
       });
 
-      console.error(`[MCP] Launched Python GUI: ${guiScriptPath} ${quizPath}`);
+      console.error(`[MCP] Launched Python GUI: ${guiScriptPath} ${quizPath} ${resultPath}`);
 
       child.on("close", () => {
         resolvePromise();
@@ -361,7 +371,7 @@ If they agree, follow these steps:
       return { content: [{ type: "text", text: "topic is required" }], isError: true };
     }
 
-    const skillDir = resolve(__dirname, "builtin-skills", "rich-notebook-pdf-generator");
+    const skillDir = resolve(__dirname, "..", "src", "builtin-skills", "rich-notebook-pdf-generator");
     const notebookDir = this.config.notebookPath;
     const screenshotInfo = args.screenshotPath
       ? `\nScreenshot path for header image: ${args.screenshotPath}`

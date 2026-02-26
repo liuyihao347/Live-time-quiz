@@ -429,7 +429,10 @@ class QuizWindow:
         try:
             quiz_file = Path(sys.argv[1]) if len(sys.argv) > 1 else None
             if quiz_file:
-                result_path = quiz_file.parent / f"{quiz_file.stem}.result.json"
+                if len(sys.argv) > 2:
+                    result_path = Path(sys.argv[2]).expanduser().resolve()
+                else:
+                    result_path = quiz_file.parent / f"{quiz_file.stem}.result.json"
                 selected = self.selected_index
                 correct = int(self.quiz_data.get("correctIndex", 0))
                 result = {

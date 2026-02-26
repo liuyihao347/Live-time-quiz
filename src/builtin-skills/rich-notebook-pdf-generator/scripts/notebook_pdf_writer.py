@@ -27,7 +27,7 @@ except Exception:
 
 
 def _register_chinese_fonts():
-    """Register Chinese fonts for PDF generation. Returns (normal_font, bold_font, italic_font)."""
+    """Register Chinese fonts for PDF generation. Returns (normal_font, bold_font, italic_font, symbol_font)."""
     import os
     
     # Check Windows fonts directory
@@ -41,6 +41,7 @@ def _register_chinese_fonts():
         ("SimSun", "simsun.ttc", "simsun.ttc"),
     ]
     
+    registered_font = None
     for font_family, normal_file, bold_file in font_options:
         normal_path = windows_fonts_dir / normal_file
         bold_path = windows_fonts_dir / bold_file
@@ -66,16 +67,40 @@ def _register_chinese_fonts():
                 addMapping(font_family, 1, 1, bold_font_name)     # bold+italic
                 
                 print(f"Successfully registered font: {font_family}")
-                # Return the actual font names to use
-                return normal_font_name, bold_font_name, normal_font_name
+                registered_font = (normal_font_name, bold_font_name, normal_font_name)
+                break
                 
             except Exception as e:
                 print(f"Failed to register {font_family}: {e}")
                 continue
     
+    # Register symbol font for Unicode characters (arrows, box drawing, etc.)
+    symbol_font_name = normal_font_name  # fallback
+    symbol_font_options = [
+        ("SegoeUI", "segoeui.ttf"),  # Windows 10/11 现代字体，支持完整 Unicode
+        ("ArialUnicodeMS", "ARIALUNI.ttf"),  # Arial Unicode MS
+        ("DejaVuSans", "DejaVuSans.ttf"),  # DejaVu Sans
+        ("LucidaSansUnicode", "l_10646.ttf"),  # Lucida Sans Unicode
+    ]
+    
+    for font_family_symbol, font_file in symbol_font_options:
+        font_path = windows_fonts_dir / font_file
+        if font_path.exists():
+            try:
+                symbol_font_name = f"{font_family_symbol}_Symbol"
+                pdfmetrics.registerFont(TTFont(symbol_font_name, str(font_path)))
+                print(f"Successfully registered symbol font: {font_family_symbol}")
+                break
+            except Exception as e:
+                print(f"Failed to register symbol font {font_family_symbol}: {e}")
+                continue
+    
+    if registered_font:
+        return (*registered_font, symbol_font_name)
+    
     # Ultimate fallback - this should not happen on normal Windows systems
     print("WARNING: No Chinese fonts found, using Helvetica fallback")
-    return "Helvetica", "Helvetica-Bold", "Helvetica-Oblique"
+    return "Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica"
 
 
 def _safe_hex_color(value: str | None, fallback: str) -> str:
@@ -321,7 +346,7 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
     )
 
     # Register Chinese fonts
-    font_normal, font_bold, font_italic = _register_chinese_fonts()
+    font_normal, font_bold, font_italic, font_symbol = _register_chinese_fonts()
 
     title_style = ParagraphStyle(
         "TitleStyle",
@@ -386,7 +411,7 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
     mono_style = ParagraphStyle(
         "MonoStyle",
         parent=styles["BodyText"],
-        fontName=font_normal,  # Use Chinese font for flowcharts
+        fontName=font_symbol,  # Use symbol font for flowcharts (Unicode box drawing chars)
         fontSize=9,
         leading=11,
         textColor=colors.HexColor("#374151"),
@@ -530,14 +555,29 @@ def main() -> int:
     
     if len(sys.argv) < 2:
         print("Usage: python notebook_pdf_writer.py <payload.json> [out.pdf]")
+        print("       python notebook_pdf_writer.py - <topic> [out.pdf]  (read JSON from stdin)")
+        print("       echo '{...}' | python notebook_pdf_writer.py - [out.pdf]")
         return 1
     
-    payload_path = Path(sys.argv[1])
+    # Determine if reading from stdin
+    input_source = sys.argv[1]
+    read_from_stdin = input_source == "-"
     
-    # Parse payload to get topic for default filename
+    # Parse payload
     try:
-        payload = json.loads(payload_path.read_text(encoding="utf-8"))
-        topic = payload.get("topic", "notebook")
+        if read_from_stdin:
+            # Read JSON from stdin
+            stdin_data = sys.stdin.read()
+            payload = json.loads(stdin_data)
+            topic = payload.get("topic", "notebook")
+        else:
+            # Read from file
+            payload_path = Path(input_source)
+            payload = json.loads(payload_path.read_text(encoding="utf-8"))
+            topic = payload.get("topic", "notebook")
+    except json.JSONDecodeError as e:
+        print(f"Error parsing JSON: {e}")
+        return 1
     except Exception as e:
         print(f"Error reading payload: {e}")
         return 1
@@ -561,13 +601,16 @@ def main() -> int:
         print(f"Error generating PDF: {e}")
         return 1
     
-    # Delete JSON intermediate file and screenshot after successful PDF generation
-    try:
-        if payload_path.exists():
-            payload_path.unlink()
-            print(f"Cleaned up: {payload_path}")
-    except Exception as e:
-        print(f"Warning: Could not delete JSON file: {e}")
+    # If reading from file (legacy mode), cleanup files
+    if not read_from_stdin:
+        # Delete JSON intermediate file and screenshot after successful PDF generation
+        try:
+            payload_path = Path(input_source)
+            if payload_path.exists():
+                payload_path.unlink()
+                print(f"Cleaned up: {payload_path}")
+        except Exception as e:
+            print(f"Warning: Could not delete JSON file: {e}")
     
     # Delete screenshot file since it's now embedded in the PDF
     screenshot_path = payload.get("screenshotPath")
