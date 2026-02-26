@@ -337,7 +337,7 @@ class QuizWindow:
         )
         self.add_btn.grid(row=0, column=0, sticky="w")
 
-        self.note_status = ttk.Label(bottom, text="Close the window to continue if you don't need", style="Muted.TLabel")
+        self.note_status = ttk.Label(bottom, text="Close the window to continue", style="Muted.TLabel")
         self.note_status.grid(row=0, column=1, sticky="w", padx=(12, 0))
 
     def _schedule_option_density_update(self, _event=None):
@@ -474,7 +474,7 @@ class QuizWindow:
 
         self.is_correct = is_correct
         self.add_btn.config(state=tk.NORMAL)
-        self.note_status.config(text="Ready to save screenshot")
+        self.note_status.config(text="Close the window if you don't need notes")
 
     def _on_close(self):
         """Handle window close: always save quiz result if user answered."""
@@ -522,7 +522,7 @@ class QuizWindow:
             png_path = _capture_gui_screenshot(self.root, self.notebook_dir, topic)
             self.saved_to_notebook = True
             self.screenshot_path = png_path
-            self.note_status.config(text=f"Great! Close the window to continue and check {self.notebook_dir} later.")
+            self.note_status.config(text=f"Great! Check {self.notebook_dir} later.")
             self.add_btn.config(state=tk.DISABLED)
         except Exception as e:
             self.note_status.config(text=f"Failed: {e}")

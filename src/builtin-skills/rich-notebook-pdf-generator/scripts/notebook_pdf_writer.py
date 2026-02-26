@@ -103,6 +103,31 @@ def _register_chinese_fonts():
     return "Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica"
 
 
+def _register_flowchart_font(default_font: str) -> str:
+    """Register and return a grid-friendly font for text flowcharts.
+
+    Prefer SimSun/NSimSun on Windows because box-drawing characters align
+    more consistently with CJK text than proportional UI fonts.
+    """
+    windows_fonts_dir = Path("C:/Windows/Fonts")
+    candidates = [
+        ("FlowchartSimSun", "simsun.ttc"),
+        ("FlowchartNSimSun", "nsimsun.ttc"),
+    ]
+
+    for font_name, font_file in candidates:
+        font_path = windows_fonts_dir / font_file
+        if not font_path.exists():
+            continue
+        try:
+            pdfmetrics.registerFont(TTFont(font_name, str(font_path)))
+            return font_name
+        except Exception:
+            continue
+
+    return default_font
+
+
 def _safe_hex_color(value: str | None, fallback: str) -> str:
     """Validate and return hex color, fallback if invalid."""
     if not isinstance(value, str):
@@ -294,8 +319,9 @@ def _render_markdown(story, markdown_text: str, h_style, h3_style, body_style, q
         if flowchart_buffer:
             story.append(Spacer(1, 4))
             for fline in flowchart_buffer:
-                xml = _make_mixed(fline)
-                story.append(Paragraph(xml or "&nbsp;", mono_style))
+                # Keep the whole line in one font to preserve box alignment.
+                safe = _escape_html_preserve_space(fline)
+                story.append(Paragraph(safe or "&nbsp;", mono_style))
             story.append(Spacer(1, 4))
             flowchart_buffer = []
 
@@ -421,6 +447,7 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
 
     # Register Chinese fonts
     font_normal, font_bold, font_italic, font_symbol = _register_chinese_fonts()
+    flowchart_font = _register_flowchart_font(font_normal)
 
     title_style = ParagraphStyle(
         "TitleStyle",
@@ -485,7 +512,7 @@ def _write_pdf(out_path: Path, payload: dict) -> None:
     mono_style = ParagraphStyle(
         "MonoStyle",
         parent=styles["BodyText"],
-        fontName=font_normal,  # Use normal Chinese font for flowcharts
+        fontName=flowchart_font,
         fontSize=9,
         leading=11,
         textColor=colors.HexColor("#374151"),
